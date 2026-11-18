@@ -4,14 +4,16 @@ import helmet from 'helmet'
 import pinoHttp from 'pino-http'
 
 import healthRoutes from './routes/health.routes.js'
+import reviewRoutes from './routes/reviews.routes.js'
 
 const app = express()
 
 app.use(helmet())
-
 app.use(cors({
   origin: process.env.CLIENT_URL || 'http://localhost:5173'
 }))
+
+app.use('/api/reviews', reviewRoutes)
 
 app.use(express.json({ limit: '1mb' }))
 
