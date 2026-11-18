@@ -1,5 +1,8 @@
 import { useState } from 'react'
-import { uploadReviews } from './services/reviewApi'
+import {
+  uploadReviews,
+  analyzeReviewById
+} from './services/reviewApi'
 
 function App() {
   const [file, setFile] = useState(null)
@@ -9,6 +12,10 @@ function App() {
   const [error, setError] = useState('')
 
   const [result, setResult] = useState(null)
+
+  const [analysisLoadingId, setAnalysisLoadingId] = useState(null)
+
+  const [analysisResults, setAnalysisResults] = useState({})
 
   const handleUpload = async (event) => {
     event.preventDefault()
@@ -32,6 +39,29 @@ function App() {
 
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleAnalyzeReview = async (reviewId) => {
+    setAnalysisLoadingId(reviewId)
+    setError('')
+
+    try {
+      const data = await analyzeReviewById(
+        result.importId,
+        reviewId
+      )
+
+      setAnalysisResults(prev => ({
+        ...prev,
+        [reviewId]: data.analysis
+      }))
+
+    } catch (error) {
+      setError(error.message)
+
+    } finally {
+      setAnalysisLoadingId(null)
     }
   }
 
@@ -187,6 +217,7 @@ function App() {
                     <th className="p-4">Rating</th>
                     <th className="p-4">Review</th>
                     <th className="p-4">Status</th>
+                    <th className="p-4">AI Analysis</th>
                   </tr>
                 </thead>
 
@@ -226,6 +257,59 @@ function App() {
                           <span className="text-green-400">
                             Ready for analysis
                           </span>
+                        )}
+                      </td>
+
+                      <td className="p-4 min-w-64">
+                        {analysisResults[review.reviewId] ? (
+                          <div className="space-y-2">
+                            <p className="font-semibold">
+                              {analysisResults[review.reviewId].sentiment}
+                            </p>
+
+                            <p className="text-slate-400 text-xs">
+                              {analysisResults[review.reviewId].topics.join(', ')}
+                            </p>
+
+                            <p className="text-slate-300 text-xs">
+                              {analysisResults[review.reviewId].summary}
+                            </p>
+
+                            <p className="text-xs">
+                              Needs reply:{' '}
+                              {analysisResults[review.reviewId].needs_reply
+                                ? 'Yes'
+                                : 'No'}
+                            </p>
+                          </div>
+                        ) : review.isDuplicate ? (
+                          analysisResults[review.duplicateOf] ? (
+                            <button
+                              onClick={() => handleAnalyzeReview(review.reviewId)}
+                              disabled={analysisLoadingId === review.reviewId}
+                              className="px-3 py-2 rounded-lg bg-blue-600
+                              hover:bg-blue-700 disabled:opacity-50 text-white"
+                            >
+                              {analysisLoadingId === review.reviewId
+                                ? 'Applying analysis...'
+                                : 'Use original analysis'}
+                            </button>
+                          ) : (
+                            <span className="text-yellow-400 text-xs">
+                              Duplicate – analyse original first
+                            </span>
+                          )
+                        ) : (
+                          <button
+                            onClick={() => handleAnalyzeReview(review.reviewId)}
+                            disabled={analysisLoadingId === review.reviewId}
+                            className="px-3 py-2 rounded-lg bg-blue-600
+                            hover:bg-blue-700 disabled:opacity-50 text-white"
+                          >
+                            {analysisLoadingId === review.reviewId
+                              ? 'Analysing...'
+                              : 'Analyse with AI'}
+                          </button>
                         )}
                       </td>
 

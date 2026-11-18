@@ -63,6 +63,41 @@ const reviewSchema = new mongoose.Schema(
       type: String,
       enum: ['pending', 'completed', 'analysis_failed'],
       default: 'pending'
+    },
+
+    // AI Analysis Result
+    aiAnalysis: {
+      sentiment: {
+        type: String,
+        enum: ['positive', 'neutral', 'negative'],
+        default: null
+      },
+
+      topics: {
+        type: [{
+          type: String,
+          enum: [
+            'quality',
+            'delivery',
+            'price',
+            'packaging',
+            'support',
+            'size_fit',
+            'other'
+          ]
+        }],
+        default: []
+      },
+
+      summary: {
+        type: String,
+        default: null
+      },
+
+      needsReply: {
+        type: Boolean,
+        default: null
+      }
     }
   },
   { timestamps: true }
@@ -74,4 +109,3 @@ reviewSchema.index(
 )
 
 export default mongoose.model('Review', reviewSchema)
-

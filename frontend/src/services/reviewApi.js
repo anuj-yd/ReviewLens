@@ -23,3 +23,18 @@ export const uploadReviews = async (file) => {
 
   return data
 }
+
+export const analyzeReviewById = async (importId, reviewId) => {
+  const response = await fetch(
+    `${API_URL}/reviews/${encodeURIComponent(importId)}/${encodeURIComponent(reviewId)}/analyze`,
+    { method: 'POST' }
+  )
+
+  const data = await response.json()
+
+  if (!response.ok) {
+    throw new Error(data.message || 'Review analysis failed')
+  }
+
+  return data
+}
