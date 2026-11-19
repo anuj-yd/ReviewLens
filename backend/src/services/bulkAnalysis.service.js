@@ -36,7 +36,7 @@ const applyAnalysisToGroup = async (group, analysis) => {
   )
 }
 
-export const analyseImportReviews = async (importId, { onProgress = async () => {} } = {}) => {
+export const analyseImportReviews = async importId => {
   if (!mongoose.Types.ObjectId.isValid(importId)) {
     const error = new Error('Invalid import ID')
     error.status = 400
@@ -69,7 +69,6 @@ export const analyseImportReviews = async (importId, { onProgress = async () => 
   metrics.totalReviews = reviews.length
 
   if (reviews.length === 0) {
-    await onProgress({ processed: 0, total: 0, failed: 0, stage: 'completed' })
     return {
       importId,
       metrics: {
@@ -100,13 +99,6 @@ export const analyseImportReviews = async (importId, { onProgress = async () => 
   const allGroups = Array.from(groups.values())
   metrics.uniqueReviews = allGroups.length
   metrics.duplicateReviewsSkipped = reviews.length - allGroups.length
-  await onProgress({
-    processed: 0,
-    total: metrics.totalReviews,
-    uniqueReviews: metrics.uniqueReviews,
-    failed: 0,
-    stage: 'analyzing'
-  })
 
   // Reuse completed analyses already stored on a review in this import.
   const groupsNeedingAnalysis = []
@@ -125,13 +117,6 @@ export const analyseImportReviews = async (importId, { onProgress = async () => 
 
       metrics.processed += group.rows.length
       metrics.alreadyCompleted += group.rows.length
-      await onProgress({
-        processed: metrics.processed,
-        total: metrics.totalReviews,
-        uniqueReviews: metrics.uniqueReviews,
-        failed: metrics.failed,
-        stage: 'analyzing'
-      })
     } else {
       groupsNeedingAnalysis.push(group)
     }
@@ -161,13 +146,6 @@ export const analyseImportReviews = async (importId, { onProgress = async () => 
 
       metrics.cacheHits += group.rows.length
       metrics.processed += group.rows.length
-      await onProgress({
-        processed: metrics.processed,
-        total: metrics.totalReviews,
-        uniqueReviews: metrics.uniqueReviews,
-        failed: metrics.failed,
-        stage: 'analyzing'
-      })
     } else {
       uncachedGroups.push(group)
     }
@@ -216,13 +194,6 @@ export const analyseImportReviews = async (importId, { onProgress = async () => 
 
       await applyAnalysisToGroup(group, analysis)
       metrics.processed += group.rows.length
-      await onProgress({
-        processed: metrics.processed,
-        total: metrics.totalReviews,
-        uniqueReviews: metrics.uniqueReviews,
-        failed: metrics.failed,
-        stage: 'analyzing'
-      })
     } catch (error) {
       console.error('[Bulk AI analysis failed]', error.message)
       metrics.failed += group.rows.length
@@ -239,14 +210,6 @@ export const analyseImportReviews = async (importId, { onProgress = async () => 
           }
         }
       )
-      metrics.processed += group.rows.length
-      await onProgress({
-        processed: metrics.processed,
-        total: metrics.totalReviews,
-        uniqueReviews: metrics.uniqueReviews,
-        failed: metrics.failed,
-        stage: 'analyzing'
-      })
     }
   }
 
@@ -254,14 +217,6 @@ export const analyseImportReviews = async (importId, { onProgress = async () => 
     const currentBatch = uncachedGroups.slice(i, i + BATCH_SIZE)
     await Promise.allSettled(currentBatch.map(processGroup))
   }
-
-  await onProgress({
-    processed: metrics.processed,
-    total: metrics.totalReviews,
-    uniqueReviews: metrics.uniqueReviews,
-    failed: metrics.failed,
-    stage: 'completed'
-  })
 
   return {
     importId,

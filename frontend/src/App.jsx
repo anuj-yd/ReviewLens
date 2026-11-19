@@ -3,7 +3,6 @@ import {
   uploadReviews,
   analyzeReviewById,
   analyzeImport,
-  getBulkAnalysisStatus,
   getImportDashboard,
   suggestReply
 } from './services/reviewApi'
@@ -17,8 +16,6 @@ function App() {
   const [result, setResult] = useState(null)
   const [dashboard, setDashboard] = useState(emptyDashboard)
   const [bulkLoading, setBulkLoading] = useState(false)
-  const [bulkJob, setBulkJob] = useState(null)
-  const [bulkResult, setBulkResult] = useState(null)
   const [analysisLoadingId, setAnalysisLoadingId] = useState(null)
   const [replyLoadingId, setReplyLoadingId] = useState(null)
   const [replies, setReplies] = useState({})
@@ -34,7 +31,7 @@ function App() {
   const handleUpload = async event => {
     event.preventDefault()
     if (!file) return setError('Please select a CSV file.')
-    setLoading(true); setError(''); setResult(null); setDashboard(emptyDashboard); setReplies({}); setBulkJob(null); setBulkResult(null)
+    setLoading(true); setError(''); setResult(null); setDashboard(emptyDashboard); setReplies({})
     try {
       const data = await uploadReviews(file)
       setResult(data)
@@ -46,17 +43,7 @@ function App() {
     if (!result?.importId) return
     setBulkLoading(true); setError('')
     try {
-      let job = await analyzeImport(result.importId)
-      setBulkJob(job)
-      while (job.state !== 'completed' && job.state !== 'failed') {
-        await new Promise(resolve => setTimeout(resolve, 1000))
-        job = await getBulkAnalysisStatus(job.jobId)
-        setBulkJob(job)
-      }
-      if (job.state === 'failed') {
-        throw new Error(job.error || 'Bulk analysis job failed.')
-      }
-      setBulkResult(job.result)
+      await analyzeImport(result.importId)
       await refreshDashboard(result.importId)
     } catch (err) { setError(err.message) } finally { setBulkLoading(false) }
   }
@@ -109,17 +96,7 @@ function App() {
         {result?.importId && <>
           <section className="flex flex-col justify-between gap-4 rounded-2xl border border-slate-800 bg-slate-900 p-6 sm:flex-row sm:items-center">
             <div><h2 className="text-xl font-semibold">Review insights</h2><p className="mt-1 text-sm text-slate-400">Analyze all unique reviews to populate sentiment and topic insights.</p></div>
-            <button onClick={handleAnalyzeImport} disabled={bulkLoading} className="rounded-lg bg-blue-600 px-5 py-3 font-semibold hover:bg-blue-500 disabled:opacity-50">{bulkLoading ? 'Analysis running…' : 'Analyze all reviews'}</button>
-            {bulkLoading && <div className="mt-4 text-sm text-blue-200" role="status" aria-live="polite">
-              <p>Background job {bulkJob?.state || 'waiting'}{bulkJob?.progress?.total ? ` · ${bulkJob.progress.processed}/${bulkJob.progress.total} reviews processed` : ''}</p>
-            </div>}
-            {bulkResult?.metrics && <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-xs text-slate-400">
-              <span>AI calls: {bulkResult.metrics.aiCalls}</span>
-              <span>Cache hits: {bulkResult.metrics.cacheHits}</span>
-              <span>Retries: {bulkResult.metrics.retries}</span>
-              <span>Failed: {bulkResult.metrics.failed}</span>
-              <span>Time: {bulkResult.metrics.processingTimeMs} ms</span>
-            </div>}
+            <button onClick={handleAnalyzeImport} disabled={bulkLoading} className="rounded-lg bg-blue-600 px-5 py-3 font-semibold hover:bg-blue-500 disabled:opacity-50">{bulkLoading ? 'Analyzing reviews…' : 'Analyze all reviews'}</button>
           </section>
 
           <section>

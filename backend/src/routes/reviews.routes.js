@@ -8,10 +8,7 @@ import {
   getImportDashboard,
   suggestReviewReply
 } from '../controllers/review.controller.js'
-import {
-  bulkAnalyseImport,
-  getBulkAnalysisStatus
-} from '../controllers/bulkAnalysis.controller.js'
+import { bulkAnalyseImport } from '../controllers/bulkAnalysis.controller.js'
 
 const router = Router()
 
@@ -25,8 +22,6 @@ router.post(
   '/bulk-analyze/:importId',
   bulkAnalyseImport
 )
-
-router.get('/bulk-analysis/:jobId', getBulkAnalysisStatus)
 
 router.get('/:importId/dashboard', getImportDashboard)
 

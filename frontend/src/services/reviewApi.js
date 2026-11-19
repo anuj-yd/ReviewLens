@@ -73,10 +73,6 @@ export const getImportDashboard = async importId => readJson(await fetch(
   `${API_URL}/reviews/${encodeURIComponent(importId)}/dashboard`
 ))
 
-export const getBulkAnalysisStatus = async jobId => readJson(await fetch(
-  `${API_URL}/reviews/bulk-analysis/${encodeURIComponent(jobId)}`
-))
-
 export const suggestReply = async (importId, reviewId) => readJson(await fetch(
   `${API_URL}/reviews/${encodeURIComponent(importId)}/${encodeURIComponent(reviewId)}/suggest-reply`,
   { method: 'POST' }
