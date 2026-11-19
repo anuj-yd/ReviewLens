@@ -132,7 +132,7 @@ export default function App() {
 
       {importResult ? <>
         <ImportSummary summary={importResult.summary} />
-        <InsightsOverview summary={dashboard.summary} reviewCount={dashboard.reviews.length} complaints={dashboard.topComplaints} praises={dashboard.topPraises} onAnalyzeAll={handleAnalyzeAll} analyzing={analyzingAll || uploading || Boolean(analyzingReviewId)} />
+        <InsightsOverview summary={dashboard.summary} reviewCount={dashboard.reviews.length} complaints={dashboard.topComplaints} praises={dashboard.topPraises} reviews={dashboard.reviews} onAnalyzeAll={handleAnalyzeAll} analyzing={analyzingAll || uploading || Boolean(analyzingReviewId)} />
         {analyzingAll && <div className="mb-4 flex items-center gap-2 rounded-lg border border-blue-400/15 bg-blue-400/[0.05] px-3 py-2.5 text-[11px] text-blue-100" role="status" aria-live="polite"><Spinner />Analyzing the import. This may take a little while.</div>}
         <ReviewExplorer reviews={dashboard.reviews} replies={replies} copiedId={copiedId} loadingReviewId={analyzingReviewId} loadingReplyId={replyLoadingId} busy={analyzingAll} onAnalyze={handleAnalyzeReview} onSuggestReply={handleSuggestReply} onCopyReply={handleCopyReply} />
       </> : <GettingStarted />}

@@ -17,6 +17,7 @@ export function Icon({ name, className = 'h-4 w-4' }) {
     neutral: <path d="M5 12h14" />,
     negative: <path d="m5 10 5 5 4-4 5 7m-5 0h5v-5" />,
     chart: <><path d="M4 19V5m0 14h16"/><path d="m6 15 4-4 3 2 5-6"/></>,
+    warning: <><path d="M10.3 3.8 2.6 17a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 3.8a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4m0 3h.01"/></>,
     help: <><circle cx="12" cy="12" r="9"/><path d="M9.6 9a2.5 2.5 0 0 1 4.8.8c0 1.7-2.4 2-2.4 3.8M12 17h.01"/></>,
     close: <path d="m6 6 12 12M18 6 6 18" />
   }

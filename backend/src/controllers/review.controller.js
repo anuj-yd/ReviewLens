@@ -154,6 +154,7 @@ export const getImportDashboard = async (req, res) => {
       reviewId: review.reviewId,
       product: review.product,
       rating: review.rating,
+      date: review.date,
       reviewText: review.reviewText,
       isDuplicate: review.isDuplicate,
       duplicateOf: review.duplicateOf,

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { AnalysisStatus, Icon, Rating, SectionHeading, SentimentBadge, Spinner } from './ReviewLensUI'
+import { isRatingSentimentMismatch } from '../utils/ratingSentimentAgreement'
 
 function FilterSelect({ label, value, onChange, options }) {
   return <label className="filter-select"><span className="sr-only">Filter by {label}</span><select title={`Filter reviews by ${label.toLowerCase()}`} value={value} onChange={event => onChange(event.target.value)} className="filter-input capitalize"><option value="all">All {label.toLowerCase()}s</option>{options.map(option => <option key={option} value={option}>{option.replaceAll('_', ' ')}</option>)}</select></label>
@@ -55,7 +56,7 @@ export default function ReviewExplorer({ reviews, replies, copiedId, loadingRevi
             const isAnalyzing = loadingReviewId === review.reviewId || (review.isDuplicate && loadingReviewId === review.duplicateOf)
             return <tr key={review.reviewId} className="align-top transition hover:bg-white/[0.025]">
               <td className="max-w-[450px] px-5 py-5">
-                <div className="flex flex-wrap items-center gap-2.5"><span className="text-base font-semibold text-slate-200">{review.reviewId}</span><Rating rating={review.rating} />{review.isDuplicate && <span className="rounded-full border border-amber-300/15 bg-amber-300/[0.07] px-2.5 py-1 text-[11px] text-amber-200">Duplicate of {review.duplicateOf}</span>}</div>
+                <div className="flex flex-wrap items-center gap-2.5"><span className="text-base font-semibold text-slate-200">{review.reviewId}</span><Rating rating={review.rating} />{isRatingSentimentMismatch(review) && <span title={`The ${review.rating}-star rating conflicts with the AI's ${review.analysis.sentiment} sentiment. Check this review.`} className="inline-flex items-center gap-1 rounded-full border border-amber-300/20 bg-amber-300/[0.07] px-2 py-1 text-[10px] font-medium text-amber-200"><Icon name="warning" className="h-3 w-3" />Rating mismatch</span>}{review.isDuplicate && <span className="rounded-full border border-amber-300/15 bg-amber-300/[0.07] px-2.5 py-1 text-[11px] text-amber-200">Duplicate of {review.duplicateOf}</span>}</div>
                 <p className="mt-3 whitespace-pre-line text-sm leading-6 text-slate-300">{review.reviewText}</p>
               </td>
               <td className="px-4 py-5 text-sm text-slate-300">{review.product}</td>

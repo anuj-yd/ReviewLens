@@ -1,4 +1,6 @@
 import { Icon, SectionHeading, StatCard } from './ReviewLensUI'
+import ProductInsights from './ProductInsights'
+import { getRatingSentimentAgreement } from '../utils/ratingSentimentAgreement'
 
 function SentimentMix({ summary }) {
   const items = [
@@ -41,8 +43,9 @@ function InsightCard({ title, subtitle, items, tone }) {
   </div>
 }
 
-export default function InsightsOverview({ summary, reviewCount, complaints, praises, onAnalyzeAll, analyzing }) {
+export default function InsightsOverview({ summary, reviewCount, complaints, praises, reviews, onAnalyzeAll, analyzing }) {
   const analyzed = summary?.totalReviews ?? 0
+  const ratingAgreement = getRatingSentimentAgreement(reviews)
   return <>
     <section className="mb-6">
       <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
@@ -51,12 +54,13 @@ export default function InsightsOverview({ summary, reviewCount, complaints, pra
           {analyzing ? <><span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-r-transparent" /> Analyzing...</> : <><Icon name="spark" /> Analyze all reviews</>}
         </button>
       </div>
-      <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-6">
         <StatCard title="Reviews analyzed" value={analyzed} detail={`${reviewCount} accepted`} icon="review" accent="blue" tooltip="Count of reviews with a completed AI analysis" />
         <StatCard title="Positive" value={`${summary?.sentimentPercentages?.positive ?? 0}%`} detail={`${summary?.sentimentCounts?.positive ?? 0} reviews`} icon="positive" accent="emerald" tooltip="Share of analyzed reviews classified as positive" />
         <StatCard title="Neutral" value={`${summary?.sentimentPercentages?.neutral ?? 0}%`} detail={`${summary?.sentimentCounts?.neutral ?? 0} reviews`} icon="neutral" accent="amber" tooltip="Share of analyzed reviews classified as neutral" />
         <StatCard title="Negative" value={`${summary?.sentimentPercentages?.negative ?? 0}%`} detail={`${summary?.sentimentCounts?.negative ?? 0} reviews`} icon="negative" accent="rose" tooltip="Share of analyzed reviews classified as negative" />
         <StatCard title="Need a reply" value={summary?.needsReply ?? 0} detail="Issues to follow up" icon="reply" accent="rose" tooltip="Reviews with complaints or unresolved issues that should receive a response" />
+        <StatCard title="Rating agreement" value={ratingAgreement.percentage == null ? '—' : `${ratingAgreement.percentage}%`} detail={ratingAgreement.compared ? `${ratingAgreement.mismatches} mismatches / ${ratingAgreement.compared} rated` : 'No rated analyzed reviews'} icon="chart" accent="amber" tooltip="Agreement compares 1–2 stars with negative, 3 stars with neutral, and 4–5 stars with positive sentiment. Unrated reviews are excluded." />
       </div>
       {analyzed > 0 && <SentimentMix summary={summary} />}
     </section>
@@ -64,5 +68,6 @@ export default function InsightsOverview({ summary, reviewCount, complaints, pra
       <InsightCard title="Top complaints" subtitle="Themes customers want fixed" items={complaints} tone="rose" />
       <InsightCard title="Top praises" subtitle="What customers value" items={praises} tone="emerald" />
     </section>
+    <ProductInsights reviews={reviews} />
   </>
 }

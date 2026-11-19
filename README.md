@@ -32,7 +32,7 @@ ReviewLens keeps the model call on the server. The browser uploads a CSV to the 
 - **Checks model output.** Validates the JSON with a strict Zod schema. Invalid JSON or fields get one correction attempt; a second invalid result is marked `analysis_failed`.
 - **Processes in bounded groups.** Bulk processing starts at most five unique review analyses concurrently. A failed request caused by rate limiting, server errors, or connection issues is retried with exponential backoff and jitter.
 - **Reuses saved results.** Bulk and manual single-review analysis share a MongoDB cache keyed by normalized review text, model, and prompt version. Cache entries are schema-validated before reuse.
-- **Presents insights.** Shows sentiment shares, reply-needed count, top three complaints and praises, plus product, sentiment, and topic filters.
+- **Presents insights.** Shows sentiment shares, rating/sentiment agreement and mismatch warnings, reply-needed count, global and per-product complaints and praises, plus product, sentiment, and topic filters.
 - **Drafts replies on demand.** A suggested reply is generated only when the user clicks the action for an analyzed review marked as needing a reply.
 
 ## Architecture
@@ -265,8 +265,8 @@ This checklist reflects the current code and repository, not a claim that end-to
 
 ### Optional bonus work
 
-- [ ] Rating-versus-sentiment mismatch warning and agreement percentage.
-- [ ] Dedicated per-product sentiment and issue view.
+- [x] Rating-versus-sentiment mismatch warning and agreement percentage — uses 1–2 stars as negative, 3 as neutral, and 4–5 as positive; unrated and unanalyzed reviews are excluded.
+- [x] Dedicated per-product sentiment and issue view — select a product to see dated sentiment trends, sentiment shares, reply-needed count, top complaints, and top praises for its unique reviews.
 - [ ] Public deployment.
 - [ ] Docker Compose that starts the frontend, backend, and database together. Current `compose.yaml` starts MongoDB only.
 - [x] AI call, cache-hit, retry, and processing-time metrics are available in bulk analysis.
@@ -274,12 +274,10 @@ This checklist reflects the current code and repository, not a claim that end-to
 ## Known limitations and next improvements
 
 1. Add automated tests and wire `npm test` to the test runner.
-2. Use the same shared cache for both bulk and single-review analysis.
-3. Add dashboard screenshots after starting the app with representative CSV data.
-4. Expand the complaint/praise aggregation if broader semantic grouping is needed; current top insights group identical topic-and-summary pairs.
-5. Add progress updates for long imports instead of returning bulk results only after processing finishes.
-6. Add rating/sentiment mismatch analysis, product-level views, and a full-stack Compose configuration if pursuing the optional bonuses.
-7. Consider model quality and prompt-injection behavior model-specific; validate representative English, Hindi, Hinglish, sarcastic, and adversarial reviews before deployment.
+2. Add dashboard screenshots after starting the app with representative CSV data.
+3. Expand the complaint/praise aggregation if broader semantic grouping is needed; current top insights group identical topic-and-summary pairs.
+4. Add progress updates for long imports instead of returning bulk results only after processing finishes.
+5. Consider model quality and prompt-injection behavior model-specific; validate representative English, Hindi, Hinglish, sarcastic, and adversarial reviews before deployment.
 
 ## AI coding tools
 
