@@ -28,7 +28,9 @@ const retryWithBackoff = async (
     maxAttempts = 4,
     baseDelay = 1000,
     maxDelay = 8000,
-    onRetry = () => {}
+    onRetry = () => {},
+    sleepFn = sleep,
+    random = Math.random
   } = {}
 ) => {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -47,7 +49,7 @@ const retryWithBackoff = async (
         baseDelay * Math.pow(2, attempt - 1)
       )
 
-      const jitter = Math.floor(Math.random() * 250)
+      const jitter = Math.floor(random() * 250)
 
       const delay = error.retryAfterMs
         ? Math.min(error.retryAfterMs, maxDelay)
@@ -64,7 +66,7 @@ const retryWithBackoff = async (
         `[AI Retry] Attempt ${attempt + 1} in ${delay}ms`
       )
 
-      await sleep(delay)
+      await sleepFn(delay)
     }
   }
 }

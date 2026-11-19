@@ -221,11 +221,12 @@ Open the local Vite URL printed in the frontend terminal. The frontend API URL d
 |---|---|---|
 | `backend` | `npm run dev` | Start the API with Nodemon |
 | `backend` | `npm start` | Start the API in production mode |
+| `backend` | `npm test` | Run CSV cleaning, analysis schema, and retry/backoff tests |
 | `frontend` | `npm run dev` | Start the Vite development server |
 | `frontend` | `npm run build` | Build the frontend for production |
 | `frontend` | `npm run lint` | Run ESLint |
 
-> **Current test status:** automated test coverage has not been added yet. The backend `npm test` command is still a placeholder, so it is not a passing test suite.
+The backend tests use Node's built-in test runner. They cover CSV cleaning (empty reviews, duplicate text, and unknown ratings), strict analysis response validation, and retry behavior for rate limits, non-retryable errors, and exhausted attempts. Run them with `cd backend && npm test`.
 
 ## API overview
 
@@ -254,7 +255,7 @@ This checklist reflects the current code and repository, not a claim that end-to
 
 ### Submission requirements
 
-- [ ] Add at least three automated tests: CSV cleaning, schema validation, and retry/backoff behavior.
+- [x] Add automated tests for CSV cleaning, schema validation, and retry/backoff behavior.
 - [ ] Add two or three real dashboard screenshots to this README.
 - [x] Document setup and prompt-injection handling.
 - [x] Add an architecture note — the diagrams above describe the current flow; keep them in sync with code changes.
@@ -273,11 +274,10 @@ This checklist reflects the current code and repository, not a claim that end-to
 
 ## Known limitations and next improvements
 
-1. Add automated tests and wire `npm test` to the test runner.
-2. Add dashboard screenshots after starting the app with representative CSV data.
-3. Expand the complaint/praise aggregation if broader semantic grouping is needed; current top insights group identical topic-and-summary pairs.
-4. Add progress updates for long imports instead of returning bulk results only after processing finishes.
-5. Consider model quality and prompt-injection behavior model-specific; validate representative English, Hindi, Hinglish, sarcastic, and adversarial reviews before deployment.
+1. Add dashboard screenshots after starting the app with representative CSV data.
+2. Expand the complaint/praise aggregation if broader semantic grouping is needed; current top insights group identical topic-and-summary pairs.
+3. Add progress updates for long imports instead of returning bulk results only after processing finishes.
+4. Consider model quality and prompt-injection behavior model-specific; validate representative English, Hindi, Hinglish, sarcastic, and adversarial reviews before deployment.
 
 ## AI coding tools
 
