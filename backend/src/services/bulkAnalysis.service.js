@@ -2,23 +2,18 @@ import mongoose from 'mongoose'
 
 import ImportBatch from '../models/ImportBatch.model.js'
 import Review from '../models/Review.model.js'
-import ReviewAnalysisCache from '../models/ReviewAnalysisCache.js'
 
 import { getOllamaConfig } from '../config/ollama.js'
 import { analyseReviewWithAI } from './reviewAnalysis.service.js'
-
-import createReviewHash from '../utils/reviewHash.js'
 import retryWithBackoff from '../utils/retryWithBackoff.js'
+import {
+  createReviewAnalysisCacheHash,
+  findCachedReviewAnalyses,
+  normalizeReviewAnalysis,
+  saveReviewAnalysisCache
+} from './reviewAnalysisCache.service.js'
 
 const BATCH_SIZE = 5
-const PROMPT_VERSION = 'v1'
-
-const normalizeAnalysis = analysis => ({
-  sentiment: analysis.sentiment,
-  topics: analysis.topics || [],
-  summary: analysis.summary,
-  needsReply: analysis.needsReply ?? analysis.needs_reply ?? null
-})
 
 const applyAnalysisToGroup = async (group, analysis) => {
   await Review.updateMany(
@@ -83,11 +78,7 @@ export const analyseImportReviews = async importId => {
 
   // Group identical review text so each unique review needs at most one call.
   for (const review of reviews) {
-    const hash = createReviewHash(
-      review.reviewText,
-      model,
-      PROMPT_VERSION
-    )
+    const hash = createReviewAnalysisCacheHash(review.reviewText, model)
 
     if (!groups.has(hash)) {
       groups.set(hash, { hash, rows: [] })
@@ -110,9 +101,17 @@ export const analyseImportReviews = async importId => {
     ))
 
     if (existing) {
+      const existingAnalysis = normalizeReviewAnalysis(existing.aiAnalysis)
+
+      try {
+        await saveReviewAnalysisCache(group.hash, model, existingAnalysis)
+      } catch (cacheError) {
+        console.error('[AI cache save error]', cacheError.message)
+      }
+
       await applyAnalysisToGroup(
         group,
-        normalizeAnalysis(existing.aiAnalysis)
+        existingAnalysis
       )
 
       metrics.processed += group.rows.length
@@ -124,15 +123,7 @@ export const analyseImportReviews = async importId => {
 
   // Load cache entries in one database query.
   const hashes = groupsNeedingAnalysis.map(group => group.hash)
-  const cachedResults = await ReviewAnalysisCache.find({
-    hash: { $in: hashes },
-    model,
-    promptVersion: PROMPT_VERSION
-  }).lean()
-
-  const cacheMap = new Map(
-    cachedResults.map(item => [item.hash, item.result])
-  )
+  const cacheMap = await findCachedReviewAnalyses(hashes, model)
   const uncachedGroups = []
 
   for (const group of groupsNeedingAnalysis) {
@@ -141,7 +132,7 @@ export const analyseImportReviews = async importId => {
     if (cachedAnalysis) {
       await applyAnalysisToGroup(
         group,
-        normalizeAnalysis(cachedAnalysis)
+        cachedAnalysis
       )
 
       metrics.cacheHits += group.rows.length
@@ -172,22 +163,11 @@ export const analyseImportReviews = async importId => {
         }
       )
 
-      const analysis = normalizeAnalysis(rawAnalysis)
+      const analysis = normalizeReviewAnalysis(rawAnalysis)
 
       // Cache-write failures should not discard a valid model response.
       try {
-        await ReviewAnalysisCache.updateOne(
-          { hash: group.hash },
-          {
-            $setOnInsert: {
-              hash: group.hash,
-              model,
-              promptVersion: PROMPT_VERSION,
-              result: analysis
-            }
-          },
-          { upsert: true }
-        )
+        await saveReviewAnalysisCache(group.hash, model, analysis)
       } catch (cacheError) {
         console.error('[AI cache save error]', cacheError.message)
       }

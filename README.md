@@ -31,7 +31,7 @@ ReviewLens keeps the model call on the server. The browser uploads a CSV to the 
 - **Analyzes feedback.** Requests structured sentiment, topic labels, an English summary, and a `needs_reply` decision from the configured Ollama model.
 - **Checks model output.** Validates the JSON with a strict Zod schema. Invalid JSON or fields get one correction attempt; a second invalid result is marked `analysis_failed`.
 - **Processes in bounded groups.** Bulk processing starts at most five unique review analyses concurrently. A failed request caused by rate limiting, server errors, or connection issues is retried with exponential backoff and jitter.
-- **Reuses saved results.** Bulk analysis looks up a MongoDB cache keyed by normalized review text, model, and prompt version.
+- **Reuses saved results.** Bulk and manual single-review analysis share a MongoDB cache keyed by normalized review text, model, and prompt version. Cache entries are schema-validated before reuse.
 - **Presents insights.** Shows sentiment shares, reply-needed count, top three complaints and praises, plus product, sentiment, and topic filters.
 - **Drafts replies on demand.** A suggested reply is generated only when the user clicks the action for an analyzed review marked as needing a reply.
 
@@ -51,6 +51,9 @@ flowchart LR
     Validator -->|Validated analysis| Mongo
     Browser -->|GET /api/reviews/:importId/dashboard| API
     API -->|Metrics, insights, review rows| Browser
+    Browser -->|Click Analyze one review| API
+    API -->|Read/write shared cache| Mongo
+    API -->|Cache miss only| LLM
     Browser -->|Click Generate suggested reply| API
     API -->|One reply request on click| LLM
     LLM -->|Reply JSON| Browser
@@ -156,36 +159,43 @@ Review text hashes use normalized Unicode, trimmed/collapsed whitespace, and low
 ### Prerequisites
 
 - Node.js and npm
-- Docker Compose
-- Ollama installed and running on the backend host
+- Docker with the Compose v2 plugin
+- Ollama installed on the host machine
 
-Pull the default model once:
+### Start MongoDB with Docker
 
-```sh
+Create the root environment file if needed, then set a MongoDB username and password:
+
+```powershell
+if (!(Test-Path .env)) { Copy-Item .env.example .env }
+```
+
+Start only MongoDB:
+
+```powershell
+docker compose up -d --remove-orphans mongodb
+```
+
+Install and start Ollama on the host, then pull the configured model:
+
+```powershell
 ollama pull qwen2.5:3b-instruct
 ```
 
-### Configure environment files
+### Run the backend and frontend locally
 
-From the repository root, using PowerShell:
+Create local environment files if they do not already exist:
 
 ```powershell
-Copy-Item .env.example .env
-Copy-Item backend/.env.example backend/.env
-Copy-Item frontend/.env.example frontend/.env
+if (!(Test-Path backend/.env)) { Copy-Item backend/.env.example backend/.env }
+if (!(Test-Path frontend/.env)) { Copy-Item frontend/.env.example frontend/.env }
 ```
 
-Set `MONGO_ROOT_USERNAME` and `MONGO_ROOT_PASSWORD` in the root `.env`. In `backend/.env`, replace the username and password in `MONGODB_URI` with the same values. URL-encode special characters in credentials. Adjust `OLLAMA_BASE_URL` and `OLLAMA_MODEL` if your Ollama instance differs. Keep real `.env` files local; they are ignored by Git.
+In `backend/.env`, use the MongoDB credentials from the root `.env` in `MONGODB_URI` with host `localhost`; URL-encode special characters in credentials. Adjust `OLLAMA_BASE_URL` and `OLLAMA_MODEL` if your local Ollama differs. Keep real `.env` files local; they are ignored by Git.
 
 The default Ollama integration is local and does not use an API key. If it is later replaced with a hosted provider, keep its key in a backend-only environment variable. Never place an LLM key in a `VITE_*` variable.
 
 ### Install and run
-
-Start MongoDB from the repository root:
-
-```powershell
-docker compose up -d mongodb
-```
 
 In a backend terminal:
 
@@ -238,7 +248,7 @@ This checklist reflects the current code and repository, not a claim that end-to
 - [x] **Validate model output and retry once** — strict Zod validation and `analysis_failed` handling are implemented.
 - [x] **Resist prompt injection** — system and user prompt design treats reviews as data; README explains R012 handling and the limitation.
 - [x] **Batch and retry provider failures** — bulk path processes five unique review groups concurrently and retries rate limits/server/connection failures with backoff.
-- [ ] **Cache across repeated uploads in every analysis path** — MongoDB cache is used by bulk analysis. The manual single-review endpoint does not write/read the shared cache; use the bulk path for cross-upload cache reuse until that path is unified.
+- [x] **Cache across repeated uploads in every analysis path** — bulk and manual single-review analysis use the same hash, model/prompt version, schema validation, and MongoDB read/write helpers. Existing saved analyses are backfilled into the shared cache when encountered.
 - [x] **Dashboard and on-click replies** — cards, top complaints/praises, filters, and click-triggered replies are implemented.
 - [x] **Keep secrets server-side** — the browser calls the backend; environment examples contain placeholders and no real API key.
 

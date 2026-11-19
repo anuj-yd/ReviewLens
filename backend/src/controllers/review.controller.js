@@ -4,12 +4,20 @@ import path from 'node:path'
 import ImportBatch from '../models/ImportBatch.model.js'
 import Review from '../models/Review.model.js'
 
+import { getOllamaConfig } from '../config/ollama.js'
 import { parseAndCleanReviews } from '../services/reviewCsv.service.js'
 import {
   analyseReviewWithAI,
   AnalysisValidationError,
   generateSuggestedReply
 } from '../services/reviewAnalysis.service.js'
+import {
+  createReviewAnalysisCacheHash,
+  findCachedReviewAnalysis,
+  normalizeReviewAnalysis,
+  saveReviewAnalysisCache
+} from '../services/reviewAnalysisCache.service.js'
+import retryWithBackoff from '../utils/retryWithBackoff.js'
 
 const serializeAnalysis = review => ({
   sentiment: review.aiAnalysis.sentiment,
@@ -204,20 +212,38 @@ export const analyzeSingleReview = async (req, res) => {
       })
     }
 
-    // Return existing analysis instead of calling the model again
+    const { model } = getOllamaConfig()
+    const cacheHash = createReviewAnalysisCacheHash(review.reviewText, model)
+    const writeCacheSafely = async analysis => {
+      try {
+        await saveReviewAnalysisCache(cacheHash, model, analysis)
+      } catch (cacheError) {
+        req.log?.error({ err: cacheError }, 'Review analysis cache save failed')
+      }
+    }
+
+    // Keep older completed records useful to future uploads by backfilling
+    // their validated result into the shared cache.
     if (review.analysisStatus === 'completed' && hasSavedAnalysis(review)) {
+      const analysis = normalizeReviewAnalysis(review.aiAnalysis)
+      await writeCacheSafely(analysis)
 
       return res.status(200).json({
         success: true,
         message: 'Analysis already available.',
-        analysis: serializeAnalysis(review)
+        analysis: serializeAnalysis(review),
+        cacheHit: false
       })
-
     }
 
-    // Duplicate reviews must inherit the original analysis
-    if (review.isDuplicate) {
+    const { analysis: cachedAnalysis } = await findCachedReviewAnalysis(
+      review.reviewText,
+      model
+    )
+    let analysis = cachedAnalysis
+    let message = 'Review analysed successfully.'
 
+    if (!analysis && review.isDuplicate) {
       const originalReview = await Review.findOne({
         importId,
         reviewId: review.duplicateOf
@@ -226,54 +252,39 @@ export const analyzeSingleReview = async (req, res) => {
       if (!originalReview ||
           originalReview.analysisStatus !== 'completed' ||
           !hasSavedAnalysis(originalReview)) {
-
         return res.status(409).json({
           success: false,
           message: 'Analyse the original review first.'
         })
-
       }
 
-      review.aiAnalysis = {
-        sentiment: originalReview.aiAnalysis.sentiment,
-        topics: originalReview.aiAnalysis.topics,
-        summary: originalReview.aiAnalysis.summary,
-        needsReply: originalReview.aiAnalysis.needsReply
-      }
-
-      review.analysisStatus = 'completed'
-
-      await review.save()
-
-      return res.status(200).json({
-        success: true,
-        message: 'Duplicate review inherited original analysis.',
-        analysis: serializeAnalysis(review)
-      })
-
+      analysis = normalizeReviewAnalysis(originalReview.aiAnalysis)
+      await writeCacheSafely(analysis)
+      message = 'Duplicate review inherited original analysis.'
+    } else if (!analysis) {
+      const modelAnalysis = await retryWithBackoff(
+        () => analyseReviewWithAI(review.reviewText),
+        {
+          maxAttempts: 4,
+          baseDelay: 1000,
+          maxDelay: 8000
+        }
+      )
+      analysis = normalizeReviewAnalysis(modelAnalysis)
+      await writeCacheSafely(analysis)
+    } else {
+      message = 'Review analysis restored from shared cache.'
     }
 
-    // Call the configured AI model
-    const analysis = await analyseReviewWithAI(
-      review.reviewText
-    )
-
-    // Save validated analysis
-    review.aiAnalysis = {
-      sentiment: analysis.sentiment,
-      topics: analysis.topics,
-      summary: analysis.summary,
-      needsReply: analysis.needs_reply
-    }
-
+    review.aiAnalysis = analysis
     review.analysisStatus = 'completed'
-
     await review.save()
 
     return res.status(200).json({
       success: true,
-      message: 'Review analysed successfully.',
-      analysis
+      message,
+      analysis: serializeAnalysis(review),
+      cacheHit: Boolean(cachedAnalysis)
     })
 
   } catch (error) {
