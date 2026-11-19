@@ -16,9 +16,9 @@ app.use(cors({
 // Attach request logging before routes so controller errors include req.log.
 app.use(pinoHttp())
 
-app.use('/api/reviews', reviewRoutes)
-
 app.use(express.json({ limit: '1mb' }))
+
+app.use('/api/reviews', reviewRoutes)
 
 app.use('/api/health', healthRoutes)
 

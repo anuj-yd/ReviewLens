@@ -1,3 +1,4 @@
+import axios from 'axios'
 import { getOllamaConfig } from '../config/ollama.js'
 
 import {
@@ -61,7 +62,7 @@ const hasExplicitProductFailure = reviewText => {
   return reportsFailure.test(reviewText) && !deniesFailure.test(reviewText)
 }
 
-export const analyseReviewWithAI = async reviewText => {
+export const analyseReviewWithAI = async (reviewText, { onRequest } = {}) => {
   const { baseUrl, model } = getOllamaConfig()
   let validationFeedback = ''
 
@@ -71,12 +72,11 @@ export const analyseReviewWithAI = async reviewText => {
     let response
 
     try {
-      response = await fetch(`${baseUrl.replace(/\/$/, '')}/api/chat`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
+      onRequest?.()
+
+      response = await axios.post(
+        `${baseUrl.replace(/\/$/, '')}/api/chat`,
+        {
           model,
           messages: [
             {
@@ -93,21 +93,53 @@ export const analyseReviewWithAI = async reviewText => {
           options: {
             temperature: 0.1
           }
-        }),
-        signal: AbortSignal.timeout(120000)
-      })
+        },
+        {
+          timeout: 120000,
+          transitional: {
+            clarifyTimeoutError: true
+          },
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        }
+      )
     } catch (error) {
       console.error('[Ollama connection error]', error.message)
-      throw new Error('Unable to connect to local Ollama server.')
+
+      if (error.response) {
+        const apiError = new Error(
+          `Ollama request failed: ${error.response.status}`,
+          { cause: error }
+        )
+
+        apiError.status = error.response.status
+
+        const retryAfter = Number(
+          error.response.headers?.['retry-after']
+        )
+
+        if (Number.isFinite(retryAfter) && retryAfter > 0) {
+          apiError.retryAfterMs = retryAfter * 1000
+        }
+
+        throw apiError
+      }
+
+      const connectionError = new Error(
+        'Unable to connect to local Ollama server.',
+        { cause: error }
+      )
+
+      connectionError.code =
+        error.cause?.code ||
+        error.code ||
+        (error.name === 'TimeoutError' ? 'ETIMEDOUT' : 'ECONNRESET')
+
+      throw connectionError
     }
 
-    if (!response.ok) {
-      const errorText = await response.text()
-      console.error('[Ollama API error]', errorText)
-      throw new Error(`Ollama request failed: ${response.status}`)
-    }
-
-    const data = await response.json()
+    const data = response.data
     const content = data.message?.content
     let parsedResponse
 
