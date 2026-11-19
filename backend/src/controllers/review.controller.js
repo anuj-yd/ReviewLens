@@ -7,7 +7,8 @@ import Review from '../models/Review.model.js'
 import { parseAndCleanReviews } from '../services/reviewCsv.service.js'
 import {
   analyseReviewWithAI,
-  AnalysisValidationError
+  AnalysisValidationError,
+  generateSuggestedReply
 } from '../services/reviewAnalysis.service.js'
 
 const serializeAnalysis = review => ({
@@ -101,6 +102,80 @@ export const uploadReviews = async (req, res, next) => {
     }
 
     next(error)
+  }
+}
+
+export const getImportDashboard = async (req, res) => {
+  const { importId } = req.params
+  if (!mongoose.isValidObjectId(importId)) {
+    return res.status(400).json({ success: false, message: 'Invalid import ID.' })
+  }
+
+  const reviews = await Review.find({ importId }).sort({ createdAt: 1 }).lean()
+  if (!reviews.length && !(await ImportBatch.exists({ _id: importId }))) {
+    return res.status(404).json({ success: false, message: 'Import batch not found.' })
+  }
+
+  const analyzed = reviews.filter(review => review.analysisStatus === 'completed' && review.aiAnalysis?.sentiment)
+  const sentimentCounts = { positive: 0, neutral: 0, negative: 0 }
+  const insights = { complaints: new Map(), praises: new Map() }
+  for (const review of analyzed) {
+    const { sentiment, summary, topics = [] } = review.aiAnalysis
+    sentimentCounts[sentiment] += 1
+    if (sentiment === 'negative' || sentiment === 'positive') {
+      const kind = sentiment === 'negative' ? 'complaints' : 'praises'
+      const key = `${topics.join(', ') || 'other'}: ${summary}`
+      const item = insights[kind].get(key) || { topic: topics.join(', ') || 'other', summary, count: 0 }
+      item.count += 1
+      insights[kind].set(key, item)
+    }
+  }
+  const total = analyzed.length
+  const percentages = Object.fromEntries(Object.entries(sentimentCounts).map(([key, count]) => [key, total ? Math.round(count / total * 100) : 0]))
+  return res.json({
+    success: true,
+    summary: {
+      totalReviews: total,
+      needsReply: analyzed.filter(review => review.aiAnalysis.needsReply).length,
+      sentimentCounts,
+      sentimentPercentages: percentages
+    },
+    topComplaints: [...insights.complaints.values()].sort((a, b) => b.count - a.count).slice(0, 3),
+    topPraises: [...insights.praises.values()].sort((a, b) => b.count - a.count).slice(0, 3),
+    reviews: reviews.map(review => ({
+      reviewId: review.reviewId,
+      product: review.product,
+      rating: review.rating,
+      reviewText: review.reviewText,
+      isDuplicate: review.isDuplicate,
+      duplicateOf: review.duplicateOf,
+      analysisStatus: review.analysisStatus,
+      analysis: review.analysisStatus === 'completed' ? {
+        sentiment: review.aiAnalysis.sentiment,
+        topics: review.aiAnalysis.topics,
+        summary: review.aiAnalysis.summary,
+        needs_reply: review.aiAnalysis.needsReply
+      } : null
+    }))
+  })
+}
+
+export const suggestReviewReply = async (req, res) => {
+  const { importId, reviewId } = req.params
+  if (!mongoose.isValidObjectId(importId)) {
+    return res.status(400).json({ success: false, message: 'Invalid import ID.' })
+  }
+  try {
+    const review = await Review.findOne({ importId, reviewId })
+    if (!review) return res.status(404).json({ success: false, message: 'Review not found.' })
+    if (review.analysisStatus !== 'completed' || !review.aiAnalysis?.needsReply) {
+      return res.status(409).json({ success: false, message: 'A suggested reply is available only for analysed reviews marked as needing a reply.' })
+    }
+    const reply = await generateSuggestedReply(review)
+    return res.json({ success: true, reply })
+  } catch (error) {
+    req.log?.error({ err: error }, 'Suggested reply generation failed')
+    return res.status(502).json({ success: false, message: 'Could not generate a suggested reply. Please try again.' })
   }
 }
 
