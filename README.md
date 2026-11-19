@@ -19,6 +19,7 @@ Upload messy customer feedback, find recurring praise and complaints, and see wh
 | **Client** | React 19, Vite, Tailwind CSS 4 |
 | **API** | Node.js, Express 5 |
 | **Database** | MongoDB with Mongoose |
+| **Job queue** | BullMQ backed by Redis |
 | **Local LLM** | Ollama; default model `qwen2.5:3b-instruct` |
 | **Input** | CSV with review ID, product, rating, date, and review text |
 
@@ -30,7 +31,8 @@ ReviewLens keeps the model call on the server. The browser uploads a CSV to the 
 - **Avoids duplicate analysis.** Detects repeated review text and applies the original review's analysis to duplicates.
 - **Analyzes feedback.** Requests structured sentiment, topic labels, an English summary, and a `needs_reply` decision from the configured Ollama model.
 - **Checks model output.** Validates the JSON with a strict Zod schema. Invalid JSON or fields get one correction attempt; a second invalid result is marked `analysis_failed`.
-- **Processes in bounded groups.** Bulk processing starts at most five unique review analyses concurrently. A failed request caused by rate limiting, server errors, or connection issues is retried with exponential backoff and jitter.
+- **Runs bulk work in the background.** The API enqueues each import in BullMQ and returns a job ID. A separate worker processes the job and publishes progress through a status endpoint.
+- **Processes in bounded groups.** Each worker job starts at most five unique review analyses concurrently. Model requests retry rate limits, server errors, and connection failures with exponential backoff and jitter. BullMQ also retries unexpected job-level failures.
 - **Reuses saved results.** Bulk analysis looks up a MongoDB cache keyed by normalized review text, model, and prompt version.
 - **Presents insights.** Shows sentiment shares, reply-needed count, top three complaints and praises, plus product, sentiment, and topic filters.
 - **Drafts replies on demand.** A suggested reply is generated only when the user clicks the action for an analyzed review marked as needing a reply.
@@ -44,13 +46,16 @@ flowchart LR
     API -->|Parse, clean, validate rows| Cleaner[CSV cleaning service]
     Cleaner -->|Create import and review records| Mongo[(MongoDB)]
     Browser -->|POST /api/reviews/bulk-analyze/:importId| API
-    API -->|Group duplicates, read/write cache| Analyzer[Bulk analysis service]
+    API -->|Enqueue import job| Redis[(Redis / BullMQ)]
+    Worker[Analysis worker] -->|Consume queued job| Redis
+    Worker -->|Group duplicates, read/write cache| Analyzer[Bulk analysis service]
     Analyzer <--> Mongo
     Analyzer -->|Up to 5 concurrent review calls| LLM[Ollama on backend host]
     LLM -->|Structured JSON| Validator[Zod schema validation]
     Validator -->|Validated analysis| Mongo
     Browser -->|GET /api/reviews/:importId/dashboard| API
     API -->|Metrics, insights, review rows| Browser
+    Browser -->|Poll job status and progress| API
     Browser -->|Click Generate suggested reply| API
     API -->|One reply request on click| LLM
     LLM -->|Reply JSON| Browser
@@ -70,8 +75,10 @@ flowchart TD
     H --> I[Hash review text and detect duplicates]
     I --> J[Save import and accepted reviews]
     J --> K[Bulk analyze action]
-    K --> L[Group same text; check saved result and cache]
-    L --> M{Cached result?}
+    K --> L[API enqueues job in Redis and returns job ID]
+    L --> W[Worker claims import job]
+    W --> X[Group same text; check saved result and cache]
+    X --> M{Cached result?}
     M -->|Yes| N[Reuse validated analysis]
     M -->|No| O[Process groups in waves of five]
     O --> P[Send review as untrusted JSON data to Ollama]
@@ -83,6 +90,7 @@ flowchart TD
     R --> U[Refresh dashboard insights]
     N --> U
     T --> U
+    U --> V[Browser polls status and refreshes dashboard]
 ```
 
 ## Prompt injection and model validation
@@ -157,6 +165,7 @@ Review text hashes use normalized Unicode, trimmed/collapsed whitespace, and low
 
 - Node.js and npm
 - Docker Compose
+- Redis (started by the included Compose file)
 - Ollama installed and running on the backend host
 
 Pull the default model once:
@@ -181,18 +190,25 @@ The default Ollama integration is local and does not use an API key. If it is la
 
 ### Install and run
 
-Start MongoDB from the repository root:
+Start MongoDB and Redis from the repository root:
 
 ```powershell
-docker compose up -d mongodb
+docker compose up -d mongodb redis
 ```
 
-In a backend terminal:
+In one backend terminal, start the API:
 
 ```powershell
 cd backend
 npm ci
 npm run dev
+```
+
+In a second backend terminal, start the BullMQ worker. Install dependencies once in the first backend terminal; this command can run from the repository root in a new terminal:
+
+```powershell
+cd backend
+npm run dev:worker
 ```
 
 In a separate frontend terminal:
@@ -205,11 +221,15 @@ npm run dev
 
 Open the local Vite URL printed in the frontend terminal. The frontend API URL defaults to `http://localhost:5000`; override it with `VITE_API_BASE_URL` in `frontend/.env` when needed.
 
+`ANALYSIS_JOB_CONCURRENCY` controls how many import jobs the worker runs at once (default `1`). Each import job processes at most five unique review groups concurrently. Increase either level cautiously because it also increases concurrent Ollama requests.
+
 ### Available commands
 
 | Directory | Command | Purpose |
 |---|---|---|
 | `backend` | `npm run dev` | Start the API with Nodemon |
+| `backend` | `npm run dev:worker` | Start the BullMQ analysis worker with Nodemon |
+| `backend` | `npm run worker` | Start the BullMQ analysis worker |
 | `backend` | `npm start` | Start the API in production mode |
 | `frontend` | `npm run dev` | Start the Vite development server |
 | `frontend` | `npm run build` | Build the frontend for production |
@@ -222,7 +242,8 @@ Open the local Vite URL printed in the frontend terminal. The frontend API URL d
 | Method | Endpoint | Purpose |
 |---|---|---|
 | `POST` | `/api/reviews/upload` | Upload, clean, and store a CSV import |
-| `POST` | `/api/reviews/bulk-analyze/:importId` | Analyze an import in bounded batches, reusing cache entries |
+| `POST` | `/api/reviews/bulk-analyze/:importId` | Enqueue an import analysis job and return its job ID |
+| `GET` | `/api/reviews/bulk-analysis/:jobId` | Read queue state, progress, result, or job failure |
 | `GET` | `/api/reviews/:importId/dashboard` | Return saved reviews and computed sentiment and insight summaries |
 | `POST` | `/api/reviews/:importId/:reviewId/analyze` | Analyze one review or return its saved analysis |
 | `POST` | `/api/reviews/:importId/:reviewId/suggest-reply` | Generate a reply for an analyzed review marked `needs_reply` |
@@ -237,7 +258,7 @@ This checklist reflects the current code and repository, not a claim that end-to
 - [x] **Analyze reviews with structured JSON** — the Ollama integration requests the required sentiment, topics, English summary, and reply flag.
 - [x] **Validate model output and retry once** — strict Zod validation and `analysis_failed` handling are implemented.
 - [x] **Resist prompt injection** — system and user prompt design treats reviews as data; README explains R012 handling and the limitation.
-- [x] **Batch and retry provider failures** — bulk path processes five unique review groups concurrently and retries rate limits/server/connection failures with backoff.
+- [x] **Queue, batch, and retry provider failures** — BullMQ runs a separate worker; each job processes five unique review groups concurrently, retries provider failures with backoff, and reports progress.
 - [ ] **Cache across repeated uploads in every analysis path** — MongoDB cache is used by bulk analysis. The manual single-review endpoint does not write/read the shared cache; use the bulk path for cross-upload cache reuse until that path is unified.
 - [x] **Dashboard and on-click replies** — cards, top complaints/praises, filters, and click-triggered replies are implemented.
 - [x] **Keep secrets server-side** — the browser calls the backend; environment examples contain placeholders and no real API key.
@@ -258,7 +279,7 @@ This checklist reflects the current code and repository, not a claim that end-to
 - [ ] Rating-versus-sentiment mismatch warning and agreement percentage.
 - [ ] Dedicated per-product sentiment and issue view.
 - [ ] Public deployment.
-- [ ] Docker Compose that starts the frontend, backend, and database together. Current `compose.yaml` starts MongoDB only.
+- [ ] Docker Compose that starts the frontend, backend, MongoDB, and Redis together. Current compose.yaml starts MongoDB and Redis; API and worker run as separate Node processes.
 - [x] AI call, cache-hit, retry, and processing-time metrics are available in bulk analysis.
 
 ## Known limitations and next improvements
@@ -267,7 +288,7 @@ This checklist reflects the current code and repository, not a claim that end-to
 2. Use the same shared cache for both bulk and single-review analysis.
 3. Add dashboard screenshots after starting the app with representative CSV data.
 4. Expand the complaint/praise aggregation if broader semantic grouping is needed; current top insights group identical topic-and-summary pairs.
-5. Add progress updates for long imports instead of returning bulk results only after processing finishes.
+5. Add push-based progress updates (Server-Sent Events or WebSockets) if browser polling becomes too chatty.
 6. Add rating/sentiment mismatch analysis, product-level views, and a full-stack Compose configuration if pursuing the optional bonuses.
 7. Consider model quality and prompt-injection behavior model-specific; validate representative English, Hindi, Hinglish, sarcastic, and adversarial reviews before deployment.
 
