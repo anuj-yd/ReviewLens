@@ -22,7 +22,7 @@ const configuredOrigins = (process.env.CLIENT_URL || '')
   .filter(Boolean)
 
 if (process.env.NODE_ENV === 'production' && configuredOrigins.length === 0 && !hasFrontendDist) {
-  throw new Error('CLIENT_URL must contain the deployed frontend origin in production.')
+  console.warn('⚠️  [WARNING] CLIENT_URL is not set. Add CLIENT_URL=<your-vercel-url> in Render Environment Variables to allow browser access.')
 }
 
 const allowedOrigins = configuredOrigins.length > 0
@@ -35,9 +35,9 @@ app.use(helmet({
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow command-line and server-to-server health checks, while limiting
-    // browser requests to explicitly configured frontend origins.
+    // Allow command-line and server-to-server health checks (requests without Origin header)
     if (!origin) return callback(null, true)
+    if (allowedOrigins.includes('*')) return callback(null, true)
     const normalized = origin.replace(/\/$/, '')
     callback(null, allowedOrigins.includes(normalized) || allowedOrigins.includes(origin))
   }
