@@ -25,9 +25,15 @@ if (process.env.NODE_ENV === 'production' && configuredOrigins.length === 0 && !
   console.warn('⚠️  [WARNING] CLIENT_URL is not set. Add CLIENT_URL=<your-vercel-url> in Render Environment Variables to allow browser access.')
 }
 
+const defaultAllowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'https://reviewslens.vercel.app'
+]
+
 const allowedOrigins = configuredOrigins.length > 0
-  ? configuredOrigins
-  : ['http://localhost:5173']
+  ? [...configuredOrigins, ...defaultAllowedOrigins]
+  : defaultAllowedOrigins
 
 app.use(helmet({
   contentSecurityPolicy: false
@@ -38,9 +44,17 @@ app.use(cors({
     // Allow command-line and server-to-server health checks (requests without Origin header)
     if (!origin) return callback(null, true)
     if (allowedOrigins.includes('*')) return callback(null, true)
+    
     const normalized = origin.replace(/\/$/, '')
-    callback(null, allowedOrigins.includes(normalized) || allowedOrigins.includes(origin))
-  }
+    const isVercelDomain = /^https:\/\/[a-z0-9-]+(\.vercel\.app)$/i.test(normalized)
+
+    if (allowedOrigins.includes(normalized) || allowedOrigins.includes(origin) || isVercelDomain) {
+      return callback(null, true)
+    }
+
+    callback(null, false)
+  },
+  credentials: true
 }))
 
 // Attach request logging before routes so controller errors include req.log.
