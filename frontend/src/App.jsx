@@ -21,6 +21,7 @@ export default function App() {
   const [analyzingReviewId, setAnalyzingReviewId] = useState(null)
   const [replyLoadingId, setReplyLoadingId] = useState(null)
   const [error, setError] = useState('')
+  const [analysisNotice, setAnalysisNotice] = useState('')
   const [importResult, setImportResult] = useState(null)
   const [dashboard, setDashboard] = useState(EMPTY_DASHBOARD)
   const [replies, setReplies] = useState({})
@@ -32,6 +33,7 @@ export default function App() {
 
   const handleFile = nextFile => {
     setError('')
+    setAnalysisNotice('')
     if (!nextFile) return
     if (!nextFile.name.toLowerCase().endsWith('.csv')) return setError('Choose a CSV file.')
     if (nextFile.size > 5 * 1024 * 1024) return setError('The CSV must be smaller than 5 MB.')
@@ -44,6 +46,7 @@ export default function App() {
     setDashboard(EMPTY_DASHBOARD)
     setReplies({})
     setError('')
+    setAnalysisNotice('')
   }
 
   const handleUpload = async event => {
@@ -51,6 +54,7 @@ export default function App() {
     if (!file) return setError('Select a CSV file before uploading.')
     setUploading(true)
     setError('')
+    setAnalysisNotice('')
     setImportResult(null)
     setDashboard(EMPTY_DASHBOARD)
     setReplies({})
@@ -69,9 +73,15 @@ export default function App() {
     if (!importResult?.importId) return
     setAnalyzingAll(true)
     setError('')
+    setAnalysisNotice('')
     try {
-      await analyzeImport(importResult.importId)
+      const result = await analyzeImport(importResult.importId)
       await refreshDashboard(importResult.importId)
+      if (result.metrics?.quotaExhausted) {
+        setAnalysisNotice(`${result.metrics.quotaProvider || 'The configured AI provider'} has exhausted its request quota. Completed reviews are saved; remaining reviews were skipped. Try again after its quota resets.`)
+      } else if (result.metrics?.failed > 0) {
+        setAnalysisNotice(`${result.metrics.failed} review${result.metrics.failed === 1 ? '' : 's'} could not be analyzed. Their completed results are saved; you can retry failed reviews later.`)
+      }
     } catch (err) {
       setError(err.message)
     } finally {
@@ -132,6 +142,7 @@ export default function App() {
 
       {importResult ? <>
         <ImportSummary summary={importResult.summary} />
+        {analysisNotice && <div className="mb-5 rounded-xl border border-amber-300/20 bg-amber-300/[0.06] px-4 py-3 text-sm leading-6 text-amber-100" role="status" aria-live="polite">{analysisNotice}</div>}
         <InsightsOverview summary={dashboard.summary} reviewCount={dashboard.reviews.length} complaints={dashboard.topComplaints} praises={dashboard.topPraises} reviews={dashboard.reviews} onAnalyzeAll={handleAnalyzeAll} analyzing={analyzingAll || uploading || Boolean(analyzingReviewId)} />
         {analyzingAll && <div className="mb-4 flex items-center gap-2 rounded-lg border border-blue-400/15 bg-blue-400/[0.05] px-3 py-2.5 text-[11px] text-blue-100" role="status" aria-live="polite"><Spinner />Analyzing the import. This may take a little while.</div>}
         <ReviewExplorer reviews={dashboard.reviews} replies={replies} copiedId={copiedId} loadingReviewId={analyzingReviewId} loadingReplyId={replyLoadingId} busy={analyzingAll} onAnalyze={handleAnalyzeReview} onSuggestReply={handleSuggestReply} onCopyReply={handleCopyReply} />

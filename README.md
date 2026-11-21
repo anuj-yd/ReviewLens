@@ -14,16 +14,16 @@ Turn customer reviews into a clear view of sentiment, recurring issues, product 
 
 ## Project overview
 
-ReviewLens is a full-stack review-analysis dashboard. A store owner uploads a CSV, the backend cleans and stores its review rows, and OpenRouter analyses unique review text. The dashboard summarizes the results and lets the owner draft a suggested reply when needed.
+ReviewLens is a full-stack review-analysis dashboard. A store owner uploads a CSV, the backend cleans and stores its review rows, and OpenRouter analyses unique review text. If OpenRouter is rate-limited or unavailable, the backend can use Gemini as an independent fallback when a Gemini API key is configured. The dashboard summarizes the results and lets the owner draft a suggested reply when needed.
 
-The application uses MongoDB Atlas for persistent data. MongoDB Compass can connect to the same Atlas cluster for database inspection. OpenRouter requests are made by the backend only; the browser never receives or uses the API key.
+The application uses MongoDB Atlas for persistent data. MongoDB Compass can connect to the same Atlas cluster for database inspection. OpenRouter and Gemini requests are made by the backend only; the browser never receives or uses either API key.
 
 | Area | Technology |
 |---|---|
 | Frontend | React 19, Vite, Tailwind CSS 4 |
 | Backend | Node.js, Express 5, ES modules |
 | Database | MongoDB Atlas with Mongoose |
-| AI provider | OpenRouter, OpenAI-compatible chat completions API |
+| AI providers | OpenRouter primary; optional Gemini fallback |
 | Validation | Zod |
 | CSV parsing and cleanup | `csv-parse`, `sanitize-html`, `he` |
 | Automated tests | Node.js built-in test runner |
@@ -53,12 +53,15 @@ flowchart LR
     API --> Bulk[Bulk analysis service]
     Bulk <-->|Read and write analyses| Atlas
     Bulk -->|At most 5 concurrent calls| OpenRouter[OpenRouter API]
+    OpenRouter -->|429, server error, or connection failure| Gemini[Gemini API fallback]
     OpenRouter -->|JSON response| Validator[Zod validation]
+    Gemini -->|JSON response| Validator
     Validator -->|Validated analysis| Atlas
     UI -->|Fetch dashboard| API
     API -->|Metrics and review rows| UI
     UI -->|Click to draft a reply| API
     API --> OpenRouter
+    OpenRouter -.-> Gemini
 ```
 
 ### Analysis flow
@@ -67,7 +70,7 @@ flowchart LR
 2. The backend validates its headers, cleans each row, and records a cleaning summary.
 3. Accepted reviews and an import record are saved to Atlas.
 4. The owner starts bulk analysis. The backend groups repeated text and checks both saved analyses and the shared cache.
-5. Cache misses are processed in waves of up to five unique reviews. Each review is sent as untrusted data to OpenRouter.
+5. Cache misses are processed in waves of up to five unique reviews. Each review is sent as untrusted data to OpenRouter; on a rate limit, server error, or connection failure, the backend can retry the request through Gemini when configured.
 6. The backend parses the response and validates its fields. Invalid structured output gets one correction attempt; a second invalid response is marked `analysis_failed`.
 7. Valid results are saved to the review and shared analysis cache. The dashboard fetches updated metrics and review rows.
 8. A suggested reply is generated only after the owner clicks the reply action.
@@ -177,7 +180,7 @@ MONGODB_URI=mongodb+srv://<db_user>:<db_password>@<cluster-host>/ReviewLens?retr
 
 Compass is a separate desktop client. It is not a project dependency and does not need to run for the website or API to work.
 
-## OpenRouter configuration
+## AI provider configuration
 
 Create or copy the backend environment file:
 
@@ -190,12 +193,16 @@ Set these backend-only variables in `backend/.env`:
 | Variable | Purpose |
 |---|---|
 | `OPENROUTER_API_KEY` | Secret key used by the server to authorize OpenRouter requests |
-| `OPENROUTER_MODEL` | OpenRouter model ID, for example `nvidia/nemotron-3.5-super-vl:free` |
+| `OPENROUTER_MODEL` | Primary model ID, for example `nvidia/nemotron-3.5-super-vl:free` |
+| `OPENROUTER_FALLBACK_MODEL` | Optional fallback model. If the primary model is individually rate-limited, ReviewLens tries `google/gemma-4-26b-a4b-it:free` once. |
 | `OPENROUTER_BASE_URL` | Optional API base URL; defaults to `https://openrouter.ai/api/v1` |
 | `OPENROUTER_SITE_URL` | Optional site URL sent as OpenRouter attribution metadata |
 | `OPENROUTER_APP_NAME` | Optional app title sent as OpenRouter attribution metadata |
+| `GEMINI_API_KEY` | Optional independent Gemini API key; enables cross-provider fallback |
+| `GEMINI_MODEL` | Gemini fallback model; defaults to `gemini-3.5-flash-lite` |
+| `GEMINI_BASE_URL` | Optional Gemini API base URL; defaults to `https://generativelanguage.googleapis.com/v1beta` |
 
-Keep the API key in `backend/.env` only. Do not use a `VITE_` variable for it and do not commit `.env` files. The free model in the example configuration may have changing availability, quotas, or data-use terms; check the model's current OpenRouter page before sending real customer data.
+Keep both keys in `backend/.env` only. Do not use a `VITE_` variable for either key and do not commit `.env` files. When Gemini is configured, OpenRouter account quota exhaustion can fail over to a different provider account. If Gemini is not configured or its own quota is exhausted, the dashboard reports a partial analysis and preserves completed results. Gemini free-tier availability and quotas depend on the Google AI Studio project and can change; verify the active limits in AI Studio before an evaluation. Free-tier requests may be used to improve Google's products, so do not submit sensitive customer data without reviewing Google's current data terms.
 
 The frontend environment is only for the backend URL. Create it if needed:
 
@@ -203,11 +210,11 @@ The frontend environment is only for the backend URL. Create it if needed:
 if (!(Test-Path frontend/.env)) { Copy-Item frontend/.env.example frontend/.env }
 ```
 
-`VITE_API_BASE_URL` defaults to `http://localhost:5000/api`. It can be changed for a different backend host, but it must never contain the OpenRouter key.
+`VITE_API_BASE_URL` defaults to `http://localhost:5000/api`. It can be changed for a different backend host, but it must never contain either AI provider key.
 
 ## Run locally
 
-Use a separate terminal for each process. Configure Atlas and OpenRouter first.
+Use a separate terminal for each process. Configure Atlas and OpenRouter first; add `GEMINI_API_KEY` to enable cross-provider fallback.
 
 ### Backend
 
@@ -231,7 +238,7 @@ npm ci
 npm run dev
 ```
 
-Open the Vite URL printed in the terminal (normally `http://localhost:5173`). The frontend calls the Express API; the browser does not contact OpenRouter directly.
+Open the Vite URL printed in the terminal (normally `http://localhost:5173`). The frontend calls the Express API; the browser does not contact OpenRouter or Gemini directly.
 
 ## API reference
 
@@ -311,12 +318,12 @@ This checklist describes implemented code, not proof that a complete deployment 
 - [x] Process bounded groups and retry transient provider failures with backoff.
 - [x] Reuse validated MongoDB cache entries across bulk and single-review paths.
 - [x] Provide summary cards, product-specific insights, top complaints/praises, filters, and on-click replies.
-- [x] Keep the OpenRouter API key in the backend environment.
+- [x] Keep AI provider API keys in the backend environment.
 
 ### Submission work still to verify or complete
 
 - [ ] Run a full live flow with a representative CSV and confirm upload → analysis → dashboard.
-- [ ] Add two or three screenshots captured from the running app.
+- [x] Add screenshots captured from the running app.
 - [ ] Confirm the repository is public and submit the repository link and ZIP if required.
 - [ ] Review commit history for distinct, meaningful changes.
 
@@ -334,10 +341,20 @@ Codex assisted with code inspection, implementation, documentation, and test cre
 
 ## Screenshots
 
-Add two or three screenshots captured from the running dashboard before submission. Suggested views:
+The screenshots below show the dashboard after importing and analyzing review data.
 
-1. Upload report and sentiment summary after analyzing the sample CSV.
-2. Product insights, top complaints/praises, filters, and review table.
-3. A review marked as needing a reply with its generated suggested response.
+### Upload and dashboard overview
 
-Save real captures under `docs/screenshots/` and embed them here. Do not use mock screenshots.
+![ReviewLens upload flow, data-cleaning report, and sentiment summary](docs/screenshots/upload-and-dashboard-overview.png)
+
+### Sentiment mix, complaints, and praises
+
+![Sentiment distribution with the top complaint and praise themes](docs/screenshots/sentiment-and-themes.png)
+
+### Product insights and review explorer
+
+![Product-level sentiment trend, themes, and review filters](docs/screenshots/product-insights-and-review-explorer.png)
+
+### Review analysis and suggested replies
+
+![Review analysis with generated suggested replies for reviews that need a response](docs/screenshots/review-analysis-and-suggested-replies.png)
