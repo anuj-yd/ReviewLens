@@ -52,6 +52,14 @@ app.use('/api/reviews', reviewRoutes)
 
 app.use('/api/health', healthRoutes)
 
+app.get('/', (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: 'ReviewLens API is running',
+    healthCheck: '/api/health'
+  })
+})
+
 // If frontend build exists, serve static client files and SPA routing
 if (hasFrontendDist) {
   app.use(express.static(frontendDistPath))
