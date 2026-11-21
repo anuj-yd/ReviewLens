@@ -1,8 +1,16 @@
-const API_BASE_URL = (
-  import.meta.env.VITE_API_URL ||
-  import.meta.env.VITE_API_BASE_URL ||
-  (import.meta.env.PROD ? 'https://reviewlens-nc9k.onrender.com' : 'http://localhost:5000')
-).replace(/\/api\/?$/, '').replace(/\/$/, '')
+const RENDER_BACKEND = 'https://reviewlens-nc9k.onrender.com'
+
+const API_BASE_URL = (() => {
+  const env = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || ''
+  const raw = env.replace(/\/api\/?$/, '').replace(/\/$/, '')
+
+  // In production, ignore localhost values that leaked from .env.example
+  if (import.meta.env.PROD && (!raw || raw.includes('localhost'))) {
+    return RENDER_BACKEND
+  }
+
+  return raw || 'http://localhost:5000'
+})()
 
 const API_URL = `${API_BASE_URL}/api`
 
