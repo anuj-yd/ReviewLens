@@ -461,8 +461,8 @@ Statuses below describe the source code reviewed in this repository. **Implement
 - [x] Deploy the app and verify upload → analysis → dashboard against the live service.
 - [x] Include dashboard screenshots in this README.
 - [x] Repository is public (as confirmed by the owner).
-- [ ] Submit the repository link and ZIP through the assessment form if requested.
-- [ ] Confirm the commit history meets the assessment's timing and meaningful-commit expectations.
+- [x] Submit the repository link and ZIP through the assessment form if requested.
+- [x] Confirm the commit history meets the assessment's timing and meaningful-commit expectations.
 - [x] Include at least three automated backend tests (the repository has nine tests across CSV cleaning, schema validation, and retry behavior).
 
 ## Limitations and next steps
