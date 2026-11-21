@@ -4,7 +4,7 @@ import path from 'node:path'
 import ImportBatch from '../models/ImportBatch.model.js'
 import Review from '../models/Review.model.js'
 
-import { getOllamaConfig } from '../config/ollama.js'
+import { getLlmConfig } from '../config/llm.js'
 import { parseAndCleanReviews } from '../services/reviewCsv.service.js'
 import {
   analyseReviewWithAI,
@@ -213,11 +213,11 @@ export const analyzeSingleReview = async (req, res) => {
       })
     }
 
-    const { model } = getOllamaConfig()
-    const cacheHash = createReviewAnalysisCacheHash(review.reviewText, model)
+    const { cacheModel } = getLlmConfig()
+    const cacheHash = createReviewAnalysisCacheHash(review.reviewText, cacheModel)
     const writeCacheSafely = async analysis => {
       try {
-        await saveReviewAnalysisCache(cacheHash, model, analysis)
+        await saveReviewAnalysisCache(cacheHash, cacheModel, analysis)
       } catch (cacheError) {
         req.log?.error({ err: cacheError }, 'Review analysis cache save failed')
       }
@@ -239,7 +239,7 @@ export const analyzeSingleReview = async (req, res) => {
 
     const { analysis: cachedAnalysis } = await findCachedReviewAnalysis(
       review.reviewText,
-      model
+      cacheModel
     )
     let analysis = cachedAnalysis
     let message = 'Review analysed successfully.'
@@ -316,14 +316,20 @@ export const analyzeSingleReview = async (req, res) => {
 
     req.log?.error({ err: error, providerStatus }, 'Review analysis failed')
     let status = 502
-    let message = 'Ollama could not analyse this review. Please try again.'
+    let message = 'OpenRouter could not analyse this review. Please try again.'
 
-    if (error.message === 'Unable to connect to local Ollama server.') {
+    if (error.message === 'Unable to connect to OpenRouter.') {
       status = 503
-      message = 'Cannot reach Ollama. Start the local Ollama server and try again.'
-    } else if (error.message === 'Ollama request failed: 404') {
+      message = 'Cannot reach OpenRouter. Check the server connection and try again.'
+    } else if (error.message.includes('OPENROUTER_API_KEY') || error.message.includes('OPENROUTER_MODEL')) {
       status = 503
-      message = 'The configured Ollama model is unavailable. Pull the model and try again.'
+      message = 'OpenRouter is not fully configured in the backend environment.'
+    } else if (error.message === 'OpenRouter request failed: 401') {
+      status = 502
+      message = 'OpenRouter rejected the API key. Check OPENROUTER_API_KEY in backend/.env.'
+    } else if (error.message === 'OpenRouter request failed: 402') {
+      status = 502
+      message = 'OpenRouter reports that the account has insufficient credits.'
     } else if (process.env.NODE_ENV !== 'production' && error.message) {
       message = `${message} (${error.message})`
     }

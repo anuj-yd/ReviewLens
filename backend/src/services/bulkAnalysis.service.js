@@ -3,7 +3,7 @@ import mongoose from 'mongoose'
 import ImportBatch from '../models/ImportBatch.model.js'
 import Review from '../models/Review.model.js'
 
-import { getOllamaConfig } from '../config/ollama.js'
+import { getLlmConfig } from '../config/llm.js'
 import { analyseReviewWithAI } from './reviewAnalysis.service.js'
 import retryWithBackoff from '../utils/retryWithBackoff.js'
 import {
@@ -73,12 +73,12 @@ export const analyseImportReviews = async importId => {
     }
   }
 
-  const { model } = getOllamaConfig()
+  const { model, cacheModel, provider } = getLlmConfig()
   const groups = new Map()
 
   // Group identical review text so each unique review needs at most one call.
   for (const review of reviews) {
-    const hash = createReviewAnalysisCacheHash(review.reviewText, model)
+    const hash = createReviewAnalysisCacheHash(review.reviewText, cacheModel)
 
     if (!groups.has(hash)) {
       groups.set(hash, { hash, rows: [] })
@@ -104,7 +104,7 @@ export const analyseImportReviews = async importId => {
       const existingAnalysis = normalizeReviewAnalysis(existing.aiAnalysis)
 
       try {
-        await saveReviewAnalysisCache(group.hash, model, existingAnalysis)
+        await saveReviewAnalysisCache(group.hash, cacheModel, existingAnalysis)
       } catch (cacheError) {
         console.error('[AI cache save error]', cacheError.message)
       }
@@ -123,7 +123,7 @@ export const analyseImportReviews = async importId => {
 
   // Load cache entries in one database query.
   const hashes = groupsNeedingAnalysis.map(group => group.hash)
-  const cacheMap = await findCachedReviewAnalyses(hashes, model)
+  const cacheMap = await findCachedReviewAnalyses(hashes, cacheModel)
   const uncachedGroups = []
 
   for (const group of groupsNeedingAnalysis) {
@@ -167,7 +167,7 @@ export const analyseImportReviews = async importId => {
 
       // Cache-write failures should not discard a valid model response.
       try {
-        await saveReviewAnalysisCache(group.hash, model, analysis)
+        await saveReviewAnalysisCache(group.hash, cacheModel, analysis)
       } catch (cacheError) {
         console.error('[AI cache save error]', cacheError.message)
       }
@@ -200,6 +200,7 @@ export const analyseImportReviews = async importId => {
 
   return {
     importId,
+    provider,
     model,
     metrics: {
       ...metrics,

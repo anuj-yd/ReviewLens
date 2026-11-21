@@ -19,16 +19,16 @@ Upload messy customer feedback, find recurring praise and complaints, and see wh
 | **Client** | React 19, Vite, Tailwind CSS 4 |
 | **API** | Node.js, Express 5 |
 | **Database** | MongoDB with Mongoose |
-| **Local LLM** | Ollama; default model `qwen2.5:3b-instruct` |
+| **LLM provider** | OpenRouter, configured on the backend |
 | **Input** | CSV with review ID, product, rating, date, and review text |
 
-ReviewLens keeps the model call on the server. The browser uploads a CSV to the Express API and receives cleaned review records and dashboard data; it never calls Ollama directly.
+ReviewLens keeps model calls on the server. The browser uploads a CSV to the Express API and receives cleaned review records and dashboard data; it never calls OpenRouter directly.
 
 ## What it does
 
 - **Cleans review CSVs.** Normalizes headers, strips HTML from review text, skips empty reviews, keeps missing or invalid ratings as unknown, validates dates, and reports invalid rows.
 - **Avoids duplicate analysis.** Detects repeated review text and applies the original review's analysis to duplicates.
-- **Analyzes feedback.** Requests structured sentiment, topic labels, an English summary, and a `needs_reply` decision from the configured Ollama model.
+- **Analyzes feedback.** Requests structured sentiment, topic labels, an English summary, and a `needs_reply` decision from the configured OpenRouter model.
 - **Checks model output.** Validates the JSON with a strict Zod schema. Invalid JSON or fields get one correction attempt; a second invalid result is marked `analysis_failed`.
 - **Processes in bounded groups.** Bulk processing starts at most five unique review analyses concurrently. A failed request caused by rate limiting, server errors, or connection issues is retried with exponential backoff and jitter.
 - **Reuses saved results.** Bulk and manual single-review analysis share a MongoDB cache keyed by normalized review text, model, and prompt version. Cache entries are schema-validated before reuse.
@@ -46,7 +46,7 @@ flowchart LR
     Browser -->|POST /api/reviews/bulk-analyze/:importId| API
     API -->|Group duplicates, read/write cache| Analyzer[Bulk analysis service]
     Analyzer <--> Mongo
-    Analyzer -->|Up to 5 concurrent review calls| LLM[Ollama on backend host]
+    Analyzer -->|Up to 5 concurrent review calls| LLM[Selected LLM provider]
     LLM -->|Structured JSON| Validator[Zod schema validation]
     Validator -->|Validated analysis| Mongo
     Browser -->|GET /api/reviews/:importId/dashboard| API
@@ -77,7 +77,7 @@ flowchart TD
     L --> M{Cached result?}
     M -->|Yes| N[Reuse validated analysis]
     M -->|No| O[Process groups in waves of five]
-    O --> P[Send review as untrusted JSON data to Ollama]
+    O --> P[Send review as untrusted JSON data to selected provider]
     P --> Q{Valid required JSON?}
     Q -->|Yes| R[Save analysis and cache entry]
     Q -->|No, first attempt| S[Retry once with validation feedback]
@@ -159,28 +159,9 @@ Review text hashes use normalized Unicode, trimmed/collapsed whitespace, and low
 ### Prerequisites
 
 - Node.js and npm
-- Docker with the Compose v2 plugin
-- Ollama installed on the host machine
-
-### Start MongoDB with Docker
-
-Create the root environment file if needed, then set a MongoDB username and password:
-
-```powershell
-if (!(Test-Path .env)) { Copy-Item .env.example .env }
-```
-
-Start only MongoDB:
-
-```powershell
-docker compose up -d --remove-orphans mongodb
-```
-
-Install and start Ollama on the host, then pull the configured model:
-
-```powershell
-ollama pull qwen2.5:3b-instruct
-```
+- A MongoDB Atlas cluster and database user
+- MongoDB Compass (optional, for browsing the database)
+- An OpenRouter API key and an available model ID
 
 ### Run the backend and frontend locally
 
@@ -191,9 +172,17 @@ if (!(Test-Path backend/.env)) { Copy-Item backend/.env.example backend/.env }
 if (!(Test-Path frontend/.env)) { Copy-Item frontend/.env.example frontend/.env }
 ```
 
-In `backend/.env`, use the MongoDB credentials from the root `.env` in `MONGODB_URI` with host `localhost`; URL-encode special characters in credentials. Adjust `OLLAMA_BASE_URL` and `OLLAMA_MODEL` if your local Ollama differs. Keep real `.env` files local; they are ignored by Git.
+In Atlas, create a database user and allow your development IP under **Network Access**. Copy the driver connection string from **Connect → Drivers**, then put it in `MONGODB_URI` in `backend/.env`, replacing the username, password, and cluster host. URL-encode reserved characters in the password. For example:
 
-The default Ollama integration is local and does not use an API key. If it is later replaced with a hosted provider, keep its key in a backend-only environment variable. Never place an LLM key in a `VITE_*` variable.
+```env
+MONGODB_URI=mongodb+srv://<db_user>:<db_password>@<cluster-host>/ReviewLens?retryWrites=true&w=majority
+```
+
+Set `OPENROUTER_API_KEY` and `OPENROUTER_MODEL` in the same backend file. Keep real `.env` files local; they are ignored by Git.
+
+To inspect the same Atlas database in MongoDB Compass, choose **New Connection**, paste the Atlas connection string from **Connect → Compass**, replace its password placeholder, and connect. Use the same Atlas database user and ensure your current IP is allowed in Atlas Network Access. Compass connects directly to Atlas; it does not need to run inside this project.
+
+OpenRouter is used for review analysis and on-click suggested replies. Optional `OPENROUTER_BASE_URL`, `OPENROUTER_SITE_URL`, and `OPENROUTER_APP_NAME` settings are also supported. Keep the OpenRouter key in the backend environment only; never put it in a `VITE_*` variable.
 
 ### Install and run
 
@@ -245,7 +234,7 @@ This checklist reflects the current code and repository, not a claim that end-to
 ### Core requirements
 
 - [x] **Upload and clean CSV data** — backend parsing, row handling, unknown ratings, and duplicate detection are implemented.
-- [x] **Analyze reviews with structured JSON** — the Ollama integration requests the required sentiment, topics, English summary, and reply flag.
+- [x] **Analyze reviews with structured JSON** — the OpenRouter integration requests the required sentiment, topics, English summary, and reply flag, then validates the response on the backend.
 - [x] **Validate model output and retry once** — strict Zod validation and `analysis_failed` handling are implemented.
 - [x] **Resist prompt injection** — system and user prompt design treats reviews as data; README explains R012 handling and the limitation.
 - [x] **Batch and retry provider failures** — bulk path processes five unique review groups concurrently and retries rate limits/server/connection failures with backoff.
@@ -269,7 +258,6 @@ This checklist reflects the current code and repository, not a claim that end-to
 - [x] Rating-versus-sentiment mismatch warning and agreement percentage — uses 1–2 stars as negative, 3 as neutral, and 4–5 as positive; unrated and unanalyzed reviews are excluded.
 - [x] Dedicated per-product sentiment and issue view — select a product to see dated sentiment trends, sentiment shares, reply-needed count, top complaints, and top praises for its unique reviews.
 - [ ] Public deployment.
-- [ ] Docker Compose that starts the frontend, backend, and database together. Current `compose.yaml` starts MongoDB only.
 - [x] AI call, cache-hit, retry, and processing-time metrics are available in bulk analysis.
 
 ## Known limitations and next improvements
