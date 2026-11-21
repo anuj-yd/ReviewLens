@@ -1,0 +1,18 @@
+{
+  "name": "reviewlens",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ReviewLens - AI-powered customer review sentiment and insights platform",
+  "type": "module",
+  "scripts": {
+    "build": "npm --prefix backend install && npm --prefix frontend install && npm --prefix frontend run build",
+    "start": "node backend/src/server.js",
+    "test": "npm --prefix backend test",
+    "install:all": "npm --prefix backend install && npm --prefix frontend install",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

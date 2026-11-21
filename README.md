@@ -241,39 +241,33 @@ npm run dev
 
 Open the Vite URL printed in the terminal (normally `http://localhost:5173`). The frontend calls the Express API; the browser does not contact OpenRouter or Gemini directly.
 
-## Production deployment
+## Production deployment (Vercel & Render)
 
-The repository is prepared for a split deployment: a static frontend on Vercel and the Node API on Render, with MongoDB Atlas as the database. The app has not been deployed or live-verified yet; a public GitHub repository is not itself a live application deployment.
+ReviewLens is configured for deployment on **Render** (Backend API) and **Vercel** (Frontend) without Docker. Detailed step-by-step instructions are available in [docs/DEPLOYMENT.md](file:///c:/Users/ay325/Desktop/ReviewLens/docs/DEPLOYMENT.md).
 
-### Deploy the backend to Render
-
-1. Create a Render **Web Service** from the public GitHub repository.
-2. Set the root directory to `backend`, the build command to `npm ci`, and the start command to `npm start`.
-3. Set the health check path to `/api/health`. It returns HTTP 503 until MongoDB is connected, so the host can detect an unavailable database.
-4. Add these environment variables in Render's service settings. Use the generated HTTPS API host for `VITE_API_BASE_URL` in the frontend setup below.
-
+### 1. Deploy Backend to Render
+1. Create a Render **Web Service** from your GitHub repository.
+2. Set **Root Directory** to `backend`, **Build Command** to `npm install`, and **Start Command** to `npm start`.
+3. Set **Health Check Path** to `/api/health`.
+4. Configure environment variables in the Render dashboard:
    | Variable | Value |
    |---|---|
    | `NODE_ENV` | `production` |
+   | `PORT` | `10000` |
    | `MONGODB_URI` | MongoDB Atlas connection string for the `ReviewLens` database |
-   | `CLIENT_URL` | Exact HTTPS origin of the deployed frontend, without a path; multiple origins may be comma-separated |
-   | `OPENROUTER_API_KEY` | Secret configured in the Render dashboard |
-   | `OPENROUTER_MODEL` | Model ID enabled for the OpenRouter account |
-   | `OPENROUTER_FALLBACK_MODEL` | Optional second OpenRouter model ID |
-   | `GEMINI_API_KEY` | Optional secret, if Gemini fallback is enabled |
+   | `OPENROUTER_API_KEY` | Your OpenRouter API key |
+   | `OPENROUTER_MODEL` | `nvidia/nemotron-3.5-super-vl:free` |
+   | `OPENROUTER_APP_NAME` | `ReviewLens` |
+   | `CLIENT_URL` | Exact HTTPS origin of your Vercel frontend (set after Vercel deploy) |
+   | `GEMINI_API_KEY` | *(Optional)* Google AI Studio API key for fallback |
 
-   Render supplies `PORT`; the API binds to `0.0.0.0` and shuts down the HTTP server and MongoDB connection on termination signals.
-5. In MongoDB Atlas, allow the backend host's outbound IP addresses in Network Access. Use the narrowest range supported by the hosting plan, and use a dedicated database user with least privilege.
-
-### Deploy the frontend to Vercel
-
-1. Import the same repository as a Vercel project and set its root directory to `frontend`.
-2. Use `npm run build` as the build command and `dist` as the output directory.
-3. Set `VITE_API_BASE_URL` to `https://<your-render-api-host>/api` and redeploy. This value is public by design; never put an AI key in a `VITE_` variable.
-4. Copy the Vercel site's exact origin (for example, `https://your-app.vercel.app`) into the backend's `CLIENT_URL` setting, then redeploy the backend.
-5. Open `/api/health` on the deployed API and confirm it reports `success: true` and `database: "connected"`. Then upload a small CSV, analyze it, and check the dashboard and suggested-reply flow.
-
-The public demo API does not currently have user authentication or distributed request throttling. Restrict access or add those controls before using it with real customers or exposing a paid AI account to arbitrary traffic. The app uses Atlas directly; Docker Compose is intentionally not included.
+### 2. Deploy Frontend to Vercel
+1. Import the same repository into Vercel and set the **Root Directory** to `frontend`.
+2. Framework preset: **Vite**, Build Command: `npm run build`, Output Directory: `dist`.
+3. Add environment variable:
+   - `VITE_API_URL`: Your deployed Render backend URL (e.g., `https://reviewlens-backend.onrender.com`).
+4. Once deployed, copy your Vercel URL (e.g. `https://reviewlens.vercel.app`) and set it as `CLIENT_URL` in your Render backend settings.
+5. Client-side routing is handled automatically via `vercel.json`.
 
 ## API reference
 
