@@ -8,6 +8,14 @@ Turn customer reviews into a clear view of sentiment, recurring issues, product 
 
 **CEDCOSS Technical Assessment · Associate Software Developer**
 
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Vercel-black?style=for-the-badge&logo=vercel)](https://reviewslens.vercel.app/)
+[![Backend API](https://img.shields.io/badge/Backend%20API-Render-46E3B7?style=for-the-badge&logo=render&logoColor=white)](https://reviewlens-nc9k.onrender.com)
+[![API Health](https://img.shields.io/badge/Health%20Check-Active-success?style=for-the-badge)](https://reviewlens-nc9k.onrender.com/api/health)
+
+**Live Frontend Application:** [https://reviewslens.vercel.app/](https://reviewslens.vercel.app/)  
+**Live Backend API Host:** [https://reviewlens-nc9k.onrender.com](https://reviewlens-nc9k.onrender.com)  
+**API Health Status:** [https://reviewlens-nc9k.onrender.com/api/health](https://reviewlens-nc9k.onrender.com/api/health)
+
 </div>
 
 ---
@@ -16,7 +24,7 @@ Turn customer reviews into a clear view of sentiment, recurring issues, product 
 
 ReviewLens is a full-stack review-analysis dashboard. A store owner uploads a CSV, the backend cleans and stores its review rows, and OpenRouter analyses unique review text. If OpenRouter is rate-limited or unavailable, the backend can use Gemini as an independent fallback when a Gemini API key is configured. The dashboard summarizes the results and lets the owner draft a suggested reply when needed.
 
-The application uses MongoDB Atlas for persistent data. MongoDB Compass can connect to the same Atlas cluster for database inspection. OpenRouter and Gemini requests are made by the backend only; the browser never receives or uses either API key.
+The application is deployed live in production with a decoupled architecture: the **React 19 Vite SPA** is hosted on **Vercel** and the **Express 5 Node API** is hosted on **Render**, connected to **MongoDB Atlas** for persistent storage and shared analysis caching. OpenRouter and Gemini requests are made server-side by the backend only; the browser never receives or exposes either API key.
 
 | Area | Technology |
 |---|---|
@@ -41,39 +49,126 @@ The application uses MongoDB Atlas for persistent data. MongoDB Compass can conn
 - Filter and search the review table; it initially shows ten rows and offers a “Load more” control.
 - Generate suggested replies only when requested for a review marked as needing a reply.
 
-## Architecture
+## System Architecture
+
+ReviewLens is deployed across a secure, decoupled cloud infrastructure designed for reliability, fast global static delivery, and private server-side AI processing:
 
 ```mermaid
-flowchart LR
-    Owner[Store owner] -->|Select CSV| UI[React dashboard]
-    UI -->|Upload file| API[Express API]
-    API --> Cleaner[CSV parser and cleaner]
-    Cleaner -->|Import and review records| Atlas[(MongoDB Atlas)]
-    UI -->|Start bulk analysis| API
-    API --> Bulk[Bulk analysis service]
-    Bulk <-->|Read and write analyses| Atlas
-    Bulk -->|At most 5 concurrent calls| OpenRouter[OpenRouter API]
-    OpenRouter -->|429, server error, or connection failure| Gemini[Gemini API fallback]
-    OpenRouter -->|JSON response| Validator[Zod validation]
-    Gemini -->|JSON response| Validator
-    Validator -->|Validated analysis| Atlas
-    UI -->|Fetch dashboard| API
-    API -->|Metrics and review rows| UI
-    UI -->|Click to draft a reply| API
-    API --> OpenRouter
-    OpenRouter -.-> Gemini
+flowchart TB
+    subgraph ClientLayer["Frontend Client (Vercel Edge CDN)"]
+        Browser["User Browser / Store Owner"]
+        VercelSPA["React 19 + Vite SPA\n(https://reviewslens.vercel.app)"]
+        Browser <-->|HTTPS / TLS 1.3| VercelSPA
+    end
+
+    subgraph ServerLayer["Backend API Server (Render Cloud Web Service)"]
+        RenderAPI["Express 5 REST API\n(https://reviewlens-nc9k.onrender.com)"]
+        CORS["CORS & Helmet Guard\n(Origin Whitelist & Security Headers)"]
+        Ingest["Multer CSV Parser & HTML Sanitizer\n(Max 5MB, utf-8, he)"]
+        Batcher["Bounded Batch Concurrency\n(Max 5 parallel AI workers)"]
+        RetryEngine["Exponential Backoff & Retry Engine"]
+        ZodValidator["Zod Schema Validation\n(1 Correction Retry on Schema Mismatch)"]
+        
+        RenderAPI --> CORS --> Ingest
+        Ingest --> Batcher --> RetryEngine --> ZodValidator
+    end
+
+    subgraph DataLayer["Persistence & Caching (MongoDB Atlas M0 Cluster)"]
+        AtlasDB[("MongoDB Atlas Database\n(Replica Set)")]
+        CollImports["imports Collection\n(Ingestion Telemetry & Summary)"]
+        CollReviews["reviews Collection\n(Normalized Rows & Classifications)"]
+        CollCache["review_analysis_cache Collection\n(SHA-256 Text & Prompt Cache)"]
+        
+        AtlasDB --- CollImports
+        AtlasDB --- CollReviews
+        AtlasDB --- CollCache
+    end
+
+    subgraph AILayer["AI Intelligence Providers (Server-to-Server Only)"]
+        OpenRouter["Primary Provider: OpenRouter API\n(nvidia/nemotron-3.5-super-vl:free)"]
+        GeminiFallback["Resilient Fallback: Google Gemini API\n(gemini-3.5-flash-lite)"]
+        
+        OpenRouter -.->|429 Rate Limit / Timeout / Error| GeminiFallback
+    end
+
+    VercelSPA <-->|REST API JSON Requests| RenderAPI
+    Batcher <-->|SHA-256 Lookup / Upsert| CollCache
+    Ingest -->|Store Cleaned Batches| CollImports
+    Ingest -->|Store Review Rows| CollReviews
+    Batcher -->|Structured Prompt| OpenRouter
+    RetryEngine -->|Fallback Request| GeminiFallback
+    ZodValidator -->|Validated Insights| CollReviews
 ```
 
-### Analysis flow
+---
+
+## User Flow
+
+The diagram below traces the user's end-to-end journey from uploading feedback to exploring product themes and generating customer replies:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Store Owner
+    participant UI as Vercel Frontend (React)
+    participant API as Render Backend (Express)
+    participant DB as MongoDB Atlas
+    participant AI as OpenRouter / Gemini
+
+    User->>UI: 1. Select CSV file (max 5 MB)
+    User->>UI: 2. Click "Upload & Clean Reviews"
+    UI->>API: POST /api/reviews/upload (multipart/form-data)
+    Note over API: Parse headers, sanitize HTML,<br/>detect duplicates, validate required fields
+    API->>DB: Save ImportBatch and clean Review rows
+    API-->>UI: Return Ingestion Report (accepted, rejected, duplicates)
+    UI-->>User: Display Ingestion Telemetry & Clean Metrics
+
+    User->>UI: 3. Click "Start AI Bulk Analysis"
+    UI->>API: POST /api/reviews/bulk-analyze/:importId
+    loop For each batch (up to 5 concurrent unique reviews)
+        API->>DB: Check SHA-256 review text cache
+        alt Cache Hit
+            DB-->>API: Return cached structured classification
+        else Cache Miss
+            API->>AI: Send sanitized review with strict JSON prompt
+            alt Primary Success
+                AI-->>API: Return structured JSON
+            else Primary 429 / Error
+                API->>AI: Automatic fallback to Gemini
+                AI-->>API: Return structured JSON
+            end
+            Note over API: Validate output against Zod schema
+            API->>DB: Cache validated analysis & update review row
+        end
+    end
+    API-->>UI: Return updated import processing telemetry
+    
+    UI->>API: GET /api/reviews/:importId/dashboard
+    API->>DB: Query aggregated metrics, trends & mismatches
+    DB-->>API: Return dashboard payload
+    API-->>UI: Return sentiment share, complaints, praises & reviews
+    UI-->>User: Render Bento Grid Dashboard & Product Filters
+
+    opt Generate Response Draft
+        User->>UI: 4. Click "Suggest Reply" on review needing reply
+        UI->>API: POST /api/reviews/:importId/:reviewId/suggest-reply
+        API->>AI: Request empathetic customer response draft
+        AI-->>API: Return suggested reply string
+        API-->>UI: Return suggested reply
+        UI-->>User: Display draft with 1-click clipboard copy
+    end
+```
+
+### Analysis flow summary
 
 1. The browser uploads a CSV as multipart form data.
 2. The backend validates its headers, cleans each row, and records a cleaning summary.
 3. Accepted reviews and an import record are saved to Atlas.
 4. The owner starts bulk analysis. The backend groups repeated text and checks both saved analyses and the shared cache.
-5. Cache misses are processed in waves of up to five unique reviews. Each review is sent as untrusted data to OpenRouter; on a rate limit, server error, or connection failure, the backend can retry the request through Gemini when configured.
-6. The backend parses the response and validates its fields. Invalid structured output gets one correction attempt; a second invalid response is marked `analysis_failed`.
+5. Cache misses are processed in waves of up to five unique reviews. Each review is sent as untrusted data to OpenRouter; on a rate limit, server error, or connection failure, the backend retries the request through Gemini when configured.
+6. The backend parses the response and validates its fields with Zod. Invalid structured output gets one correction attempt; a second invalid response is marked `analysis_failed`.
 7. Valid results are saved to the review and shared analysis cache. The dashboard fetches updated metrics and review rows.
-8. A suggested reply is generated only after the owner clicks the reply action.
+8. A suggested reply is generated only when the owner clicks the reply action.
 
 Bulk analysis currently runs during the API request and returns after processing finishes. It is not backed by a background queue, Redis, or BullMQ.
 
@@ -357,13 +452,13 @@ Statuses below describe the source code reviewed in this repository. **Implement
 |---|---|---|
 | Rating mismatch and agreement percentage | Implemented | The dashboard shows agreement and flags mismatches; unrated and unanalyzed reviews are excluded. |
 | Product-specific view | Implemented | A product selector in the dashboard seamlessly toggles between overall and per-product views, showing dated sentiment trends, trajectory indicators, topic-level issue themes, and synchronized review filtering without separate routes. |
-| Live deployment | Not completed | Deployment instructions are provided below, but there is no verified public application URL yet. |
+| Live deployment | Completed | Deployed live in production: Frontend on Vercel ([reviewslens.vercel.app](https://reviewslens.vercel.app/)) and Backend API on Render ([reviewlens-nc9k.onrender.com](https://reviewlens-nc9k.onrender.com)). |
 | Docker Compose | Not included | Compose was removed from this project; deployments use MongoDB Atlas and separate frontend/backend hosting. |
 | Cost and speed log | Implemented | After bulk analysis, the dashboard shows AI requests, cache reuse, retries, failed reviews, and processing time. It reports request counts, not monetary cost. |
 
 ### Submission items
 
-- [ ] Deploy the app and verify upload → analysis → dashboard against the live service.
+- [x] Deploy the app and verify upload → analysis → dashboard against the live service.
 - [x] Include dashboard screenshots in this README.
 - [x] Repository is public (as confirmed by the owner).
 - [ ] Submit the repository link and ZIP through the assessment form if requested.
