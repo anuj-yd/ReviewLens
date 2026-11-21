@@ -1,7 +1,9 @@
 import { getOpenRouterConfig } from './openrouter.js'
+import { getGeminiConfig } from './gemini.js'
 
 export const getLlmConfig = () => {
   const config = getOpenRouterConfig()
+  const gemini = getGeminiConfig()
 
   if (!config.apiKey) {
     throw new Error('OPENROUTER_API_KEY is required.')
@@ -13,7 +15,8 @@ export const getLlmConfig = () => {
 
   return {
     ...config,
-    provider: 'openrouter',
-    cacheModel: `openrouter:${config.model}`
+    gemini,
+    provider: gemini.apiKey ? 'openrouter+gemini-fallback' : 'openrouter',
+    cacheModel: `openrouter:${config.model}${config.fallbackModel ? `|fallback:${config.fallbackModel}` : ''}${gemini.apiKey ? `|gemini:${gemini.model}` : ''}`
   }
 }

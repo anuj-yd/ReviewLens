@@ -3,10 +3,13 @@ import { analyseImportReviews } from '../services/bulkAnalysis.service.js'
 export const bulkAnalyseImport = async (req, res) => {
   try {
     const result = await analyseImportReviews(req.params.importId)
+    const quotaExhausted = result.metrics?.quotaExhausted
 
     return res.status(200).json({
       success: true,
-      message: 'Bulk review analysis completed.',
+      message: quotaExhausted
+        ? `Bulk analysis stopped because the ${result.metrics.quotaProvider || 'AI provider'} request quota is exhausted.`
+        : 'Bulk review analysis completed.',
       ...result
     })
   } catch (error) {

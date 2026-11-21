@@ -65,7 +65,7 @@ const hasExplicitProductFailure = reviewText => {
 export const analyseReviewWithAI = async (reviewText, { onRequest } = {}) => {
   const config = getLlmConfig()
   const provider = createLlmProvider(config)
-  const providerName = 'OpenRouter'
+  const providerName = 'AI provider'
   let validationFeedback = ''
 
   for (let attempt = 1; attempt <= 2; attempt += 1) {
@@ -74,14 +74,12 @@ export const analyseReviewWithAI = async (reviewText, { onRequest } = {}) => {
     let content
 
     try {
-      onRequest?.()
-
       content = await provider.chat(
         [
           { role: 'system', content: REVIEW_SYSTEM_PROMPT },
           { role: 'user', content: buildReviewPrompt(reviewText, validationFeedback) }
         ],
-        { responseSchema: RESPONSE_SCHEMA, temperature: 0.1 }
+        { responseSchema: RESPONSE_SCHEMA, temperature: 0.1, onRequest }
       )
     } catch (error) {
       console.error(`[${providerName} request error]`, error.message)
@@ -93,12 +91,18 @@ export const analyseReviewWithAI = async (reviewText, { onRequest } = {}) => {
         )
 
         apiError.status = error.response.status
+        apiError.retryable = error.retryable
+        apiError.rateLimitScope = error.rateLimitScope
+        apiError.retryAfterMs = error.retryAfterMs
+        apiError.rateLimitProvider = error.rateLimitProvider
+        apiError.primaryProviderQuotaExhausted = error.primaryProviderQuotaExhausted
+        apiError.fallbackProvider = error.fallbackProvider
 
         const retryAfter = Number(
           error.response.headers?.['retry-after']
         )
 
-        if (Number.isFinite(retryAfter) && retryAfter > 0) {
+        if (!apiError.retryAfterMs && Number.isFinite(retryAfter) && retryAfter > 0) {
           apiError.retryAfterMs = retryAfter * 1000
         }
 
@@ -106,7 +110,7 @@ export const analyseReviewWithAI = async (reviewText, { onRequest } = {}) => {
       }
 
       const connectionError = new Error(
-        `Unable to connect to ${providerName}.`,
+        'Unable to connect to the configured AI provider.',
         { cause: error }
       )
 

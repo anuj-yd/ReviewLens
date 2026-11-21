@@ -2,6 +2,8 @@ const sleep = ms =>
   new Promise(resolve => setTimeout(resolve, ms))
 
 const isRetryableError = error => {
+  if (error.retryable === false) return false
+
   const status = Number(error.status || error.response?.status)
 
   const retryableCodes = [

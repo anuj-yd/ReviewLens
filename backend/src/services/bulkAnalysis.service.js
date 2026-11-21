@@ -49,7 +49,9 @@ export const analyseImportReviews = async importId => {
     aiCalls: 0,
     cacheHits: 0,
     failed: 0,
-    retries: 0
+    retries: 0,
+    quotaExhausted: false,
+    quotaProvider: null
   }
 
   const batchExists = await ImportBatch.exists({ _id: importId })
@@ -142,7 +144,30 @@ export const analyseImportReviews = async importId => {
     }
   }
 
+  let accountQuotaExhausted = false
+
+  const markGroupFailed = async group => {
+    metrics.failed += group.rows.length
+    await Review.updateMany(
+      {
+        _id: {
+          $in: group.rows.map(review => review._id)
+        }
+      },
+      {
+        $set: {
+          analysisStatus: 'analysis_failed'
+        }
+      }
+    )
+  }
+
   const processGroup = async group => {
+    if (accountQuotaExhausted) {
+      await markGroupFailed(group)
+      return
+    }
+
     try {
       const rawAnalysis = await retryWithBackoff(
         () => analyseReviewWithAI(
@@ -176,20 +201,12 @@ export const analyseImportReviews = async importId => {
       metrics.processed += group.rows.length
     } catch (error) {
       console.error('[Bulk AI analysis failed]', error.message)
-      metrics.failed += group.rows.length
-
-      await Review.updateMany(
-        {
-          _id: {
-            $in: group.rows.map(review => review._id)
-          }
-        },
-        {
-          $set: {
-            analysisStatus: 'analysis_failed'
-          }
-        }
-      )
+      if (error.rateLimitScope === 'account' || error.primaryProviderQuotaExhausted) {
+        accountQuotaExhausted = true
+        metrics.quotaExhausted = true
+        metrics.quotaProvider = error.rateLimitProvider || 'configured AI provider'
+      }
+      await markGroupFailed(group)
     }
   }
 

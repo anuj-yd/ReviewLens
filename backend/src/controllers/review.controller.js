@@ -180,10 +180,33 @@ export const suggestReviewReply = async (req, res) => {
     if (review.analysisStatus !== 'completed' || !review.aiAnalysis?.needsReply) {
       return res.status(409).json({ success: false, message: 'A suggested reply is available only for analysed reviews marked as needing a reply.' })
     }
-    const reply = await generateSuggestedReply(review)
+    const reply = await retryWithBackoff(
+      () => generateSuggestedReply(review),
+      {
+        maxAttempts: 4,
+        baseDelay: 1000,
+        maxDelay: 8000
+      }
+    )
     return res.json({ success: true, reply })
   } catch (error) {
     req.log?.error({ err: error }, 'Suggested reply generation failed')
+    const status = Number(error.status ?? error.response?.status)
+
+    if (status === 429 && error.rateLimitScope === 'account') {
+      return res.status(429).json({
+        success: false,
+        message: `${error.rateLimitProvider || 'AI provider'} request quota is exhausted. Wait for its reset or configure another provider.`
+      })
+    }
+
+    if (status === 429) {
+      return res.status(429).json({
+        success: false,
+        message: 'The configured AI providers are rate-limited. Please try again shortly.'
+      })
+    }
+
     return res.status(502).json({ success: false, message: 'Could not generate a suggested reply. Please try again.' })
   }
 }
@@ -316,20 +339,20 @@ export const analyzeSingleReview = async (req, res) => {
 
     req.log?.error({ err: error, providerStatus }, 'Review analysis failed')
     let status = 502
-    let message = 'OpenRouter could not analyse this review. Please try again.'
+    let message = 'The configured AI provider could not analyse this review. Please try again.'
 
-    if (error.message === 'Unable to connect to OpenRouter.') {
+    if (error.message === 'Unable to connect to the configured AI provider.') {
       status = 503
-      message = 'Cannot reach OpenRouter. Check the server connection and try again.'
+      message = 'Cannot reach the configured AI provider. Check the server connection and try again.'
     } else if (error.message.includes('OPENROUTER_API_KEY') || error.message.includes('OPENROUTER_MODEL')) {
       status = 503
       message = 'OpenRouter is not fully configured in the backend environment.'
-    } else if (error.message === 'OpenRouter request failed: 401') {
+    } else if (error.message === 'AI provider request failed: 401') {
       status = 502
-      message = 'OpenRouter rejected the API key. Check OPENROUTER_API_KEY in backend/.env.'
-    } else if (error.message === 'OpenRouter request failed: 402') {
+      message = 'An AI provider rejected its API key. Check the server-side provider keys in backend/.env.'
+    } else if (error.message === 'AI provider request failed: 402') {
       status = 502
-      message = 'OpenRouter reports that the account has insufficient credits.'
+      message = 'An AI provider reports that the account has insufficient credits.'
     } else if (process.env.NODE_ENV !== 'production' && error.message) {
       message = `${message} (${error.message})`
     }
