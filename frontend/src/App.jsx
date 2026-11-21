@@ -10,6 +10,7 @@ import ImportSummary from './components/ImportSummary'
 import InsightsOverview from './components/InsightsOverview'
 import ReviewExplorer from './components/ReviewExplorer'
 import UploadPanel from './components/UploadPanel'
+import ProcessingSummary from './components/ProcessingSummary'
 import { BrandMark, Icon, Spinner } from './components/ReviewLensUI'
 
 const EMPTY_DASHBOARD = { summary: null, reviews: [], topComplaints: [], topPraises: [] }
@@ -22,6 +23,7 @@ export default function App() {
   const [replyLoadingId, setReplyLoadingId] = useState(null)
   const [error, setError] = useState('')
   const [analysisNotice, setAnalysisNotice] = useState('')
+  const [analysisMetrics, setAnalysisMetrics] = useState(null)
   const [importResult, setImportResult] = useState(null)
   const [dashboard, setDashboard] = useState(EMPTY_DASHBOARD)
   const [replies, setReplies] = useState({})
@@ -34,6 +36,7 @@ export default function App() {
   const handleFile = nextFile => {
     setError('')
     setAnalysisNotice('')
+    setAnalysisMetrics(null)
     if (!nextFile) return
     if (!nextFile.name.toLowerCase().endsWith('.csv')) return setError('Choose a CSV file.')
     if (nextFile.size > 5 * 1024 * 1024) return setError('The CSV must be smaller than 5 MB.')
@@ -47,6 +50,7 @@ export default function App() {
     setReplies({})
     setError('')
     setAnalysisNotice('')
+    setAnalysisMetrics(null)
   }
 
   const handleUpload = async event => {
@@ -74,8 +78,10 @@ export default function App() {
     setAnalyzingAll(true)
     setError('')
     setAnalysisNotice('')
+    setAnalysisMetrics(null)
     try {
       const result = await analyzeImport(importResult.importId)
+      setAnalysisMetrics(result.metrics || null)
       await refreshDashboard(importResult.importId)
       if (result.metrics?.quotaExhausted) {
         setAnalysisNotice(`${result.metrics.quotaProvider || 'The configured AI provider'} has exhausted its request quota. Completed reviews are saved; remaining reviews were skipped. Try again after its quota resets.`)
@@ -142,6 +148,7 @@ export default function App() {
 
       {importResult ? <>
         <ImportSummary summary={importResult.summary} />
+        <ProcessingSummary metrics={analysisMetrics} />
         {analysisNotice && <div className="mb-5 rounded-xl border border-amber-300/20 bg-amber-300/[0.06] px-4 py-3 text-sm leading-6 text-amber-100" role="status" aria-live="polite">{analysisNotice}</div>}
         <InsightsOverview summary={dashboard.summary} reviewCount={dashboard.reviews.length} complaints={dashboard.topComplaints} praises={dashboard.topPraises} reviews={dashboard.reviews} onAnalyzeAll={handleAnalyzeAll} analyzing={analyzingAll || uploading || Boolean(analyzingReviewId)} />
         {analyzingAll && <div className="mb-4 flex items-center gap-2 rounded-lg border border-blue-400/15 bg-blue-400/[0.05] px-3 py-2.5 text-[11px] text-blue-100" role="status" aria-live="polite"><Spinner />Analyzing the import. This may take a little while.</div>}

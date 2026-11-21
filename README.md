@@ -215,6 +215,7 @@ if (!(Test-Path frontend/.env)) { Copy-Item frontend/.env.example frontend/.env 
 ## Run locally
 
 Use a separate terminal for each process. Configure Atlas and OpenRouter first; add `GEMINI_API_KEY` to enable cross-provider fallback.
+Use Node.js 22.12.0 or newer for both the frontend build and backend runtime.
 
 ### Backend
 
@@ -239,6 +240,40 @@ npm run dev
 ```
 
 Open the Vite URL printed in the terminal (normally `http://localhost:5173`). The frontend calls the Express API; the browser does not contact OpenRouter or Gemini directly.
+
+## Production deployment
+
+The repository is prepared for a split deployment: a static frontend on Vercel and the Node API on Render, with MongoDB Atlas as the database. The app has not been deployed or live-verified yet; a public GitHub repository is not itself a live application deployment.
+
+### Deploy the backend to Render
+
+1. Create a Render **Web Service** from the public GitHub repository.
+2. Set the root directory to `backend`, the build command to `npm ci`, and the start command to `npm start`.
+3. Set the health check path to `/api/health`. It returns HTTP 503 until MongoDB is connected, so the host can detect an unavailable database.
+4. Add these environment variables in Render's service settings. Use the generated HTTPS API host for `VITE_API_BASE_URL` in the frontend setup below.
+
+   | Variable | Value |
+   |---|---|
+   | `NODE_ENV` | `production` |
+   | `MONGODB_URI` | MongoDB Atlas connection string for the `ReviewLens` database |
+   | `CLIENT_URL` | Exact HTTPS origin of the deployed frontend, without a path; multiple origins may be comma-separated |
+   | `OPENROUTER_API_KEY` | Secret configured in the Render dashboard |
+   | `OPENROUTER_MODEL` | Model ID enabled for the OpenRouter account |
+   | `OPENROUTER_FALLBACK_MODEL` | Optional second OpenRouter model ID |
+   | `GEMINI_API_KEY` | Optional secret, if Gemini fallback is enabled |
+
+   Render supplies `PORT`; the API binds to `0.0.0.0` and shuts down the HTTP server and MongoDB connection on termination signals.
+5. In MongoDB Atlas, allow the backend host's outbound IP addresses in Network Access. Use the narrowest range supported by the hosting plan, and use a dedicated database user with least privilege.
+
+### Deploy the frontend to Vercel
+
+1. Import the same repository as a Vercel project and set its root directory to `frontend`.
+2. Use `npm run build` as the build command and `dist` as the output directory.
+3. Set `VITE_API_BASE_URL` to `https://<your-render-api-host>/api` and redeploy. This value is public by design; never put an AI key in a `VITE_` variable.
+4. Copy the Vercel site's exact origin (for example, `https://your-app.vercel.app`) into the backend's `CLIENT_URL` setting, then redeploy the backend.
+5. Open `/api/health` on the deployed API and confirm it reports `success: true` and `database: "connected"`. Then upload a small CSV, analyze it, and check the dashboard and suggested-reply flow.
+
+The public demo API does not currently have user authentication or distributed request throttling. Restrict access or add those controls before using it with real customers or exposing a paid AI account to arbitrary traffic. The app uses Atlas directly; Docker Compose is intentionally not included.
 
 ## API reference
 
@@ -307,30 +342,44 @@ ReviewLens/
 
 ## Assessment checklist and project status
 
-This checklist describes implemented code, not proof that a complete deployment or live model call has been verified.
+Statuses below describe the source code reviewed in this repository. **Implemented** means the feature is present in code; it does not claim that a fresh deployment or live provider request has been verified.
 
 ### Core requirements
 
-- [x] Upload CSV data, clean malformed rows, skip empty reviews, preserve unknown ratings, and detect duplicates.
-- [x] Analyze reviews with structured sentiment, topic, summary, and reply-needed fields.
-- [x] Validate every analysis response and allow one correction attempt before marking it failed.
-- [x] Treat review content as untrusted input and document R012 handling.
-- [x] Process bounded groups and retry transient provider failures with backoff.
-- [x] Reuse validated MongoDB cache entries across bulk and single-review paths.
-- [x] Provide summary cards, product-specific insights, top complaints/praises, filters, and on-click replies.
-- [x] Keep AI provider API keys in the backend environment.
+| # | Requirement | Status | Evidence / scope |
+|---|---|---|---|
+| 1 | Upload and clean CSV data | Implemented | Empty reviews are skipped; missing or invalid ratings remain unknown; duplicate text is detected and analyzed once. |
+| 2 | Structured LLM review analysis | Implemented | The schema requires exactly sentiment, topics, English summary, and `needs_reply`. |
+| 3 | Validate untrusted model output | Implemented | Invalid JSON/schema output receives one correction attempt, then the review is marked `analysis_failed`. |
+| 4 | Resist prompt injection | Implemented | Prompts mark review text as untrusted data; README explains R012 and the backend has a product-failure safeguard. |
+| 5 | Batch work and handle rate limits | Implemented with a scope note | Unique reviews run in bounded groups of five with exponential backoff. Each group currently makes its own model request; it is not one multi-review request. |
+| 6 | Reuse analyses across uploads | Implemented | MongoDB cache hashes normalized text and includes model and prompt version; bulk and single-review paths share it. |
+| 7 | Insights dashboard | Implemented | Summary cards, complaint/praise themes, product/sentiment/topic filters, product insights, and click-to-generate replies are present. |
+| 8 | Keep provider secrets server-side | Implemented | Provider keys are read by the backend from environment variables; frontend configuration only contains the API URL. |
 
-### Submission work still to verify or complete
+### Bonus options
 
-- [ ] Run a full live flow with a representative CSV and confirm upload → analysis → dashboard.
-- [x] Add screenshots captured from the running app.
-- [x] Confirm the repository is public.
-- [ ] Submit the repository link and ZIP if required by the evaluator.
-- [ ] Review commit history for distinct, meaningful changes.
+| Bonus | Status | Notes |
+|---|---|---|
+| Rating mismatch and agreement percentage | Implemented | The dashboard shows agreement and flags mismatches; unrated and unanalyzed reviews are excluded. |
+| Product-specific view | Partial | A product selector shows per-product sentiment trends and issue themes inside the dashboard. It is not a separate route/page for each product. |
+| Live deployment | Not completed | Deployment instructions are provided below, but there is no verified public application URL yet. |
+| Docker Compose | Not included | Compose was removed from this project; deployments use MongoDB Atlas and separate frontend/backend hosting. |
+| Cost and speed log | Implemented | After bulk analysis, the dashboard shows AI requests, cache reuse, retries, failed reviews, and processing time. It reports request counts, not monetary cost. |
+
+### Submission items
+
+- [ ] Deploy the app and verify upload → analysis → dashboard against the live service.
+- [x] Include dashboard screenshots in this README.
+- [x] Repository is public (as confirmed by the owner).
+- [ ] Submit the repository link and ZIP through the assessment form if requested.
+- [ ] Confirm the commit history meets the assessment's timing and meaningful-commit expectations.
+- [x] Include at least three automated backend tests (the repository has nine tests across CSV cleaning, schema validation, and retry behavior).
 
 ## Limitations and next steps
 
 - Bulk analysis runs synchronously; very large imports may take a long time or exceed HTTP timeouts. Progress reporting or a job queue could be added if needed.
+- The public demo API has no user authentication or shared/distributed rate limiter; protect it before exposing it to arbitrary traffic or real customer data.
 - The current complaint/praise grouping is based on identical topic-and-summary text, not semantic similarity.
 - The test suite covers core backend utilities and schemas, but not MongoDB integration, live OpenRouter calls, or browser end-to-end behavior.
 - Free model availability, quota, latency, and data-use terms are provider-specific and may change. Verify them before processing a large dataset or real customer information.

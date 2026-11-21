@@ -8,9 +8,26 @@ import reviewRoutes from './routes/reviews.routes.js'
 
 const app = express()
 
+const configuredOrigins = (process.env.CLIENT_URL || '')
+  .split(',')
+  .map(origin => origin.trim())
+  .filter(Boolean)
+
+if (process.env.NODE_ENV === 'production' && configuredOrigins.length === 0) {
+  throw new Error('CLIENT_URL must contain the deployed frontend origin in production.')
+}
+
+const allowedOrigins = configuredOrigins.length > 0
+  ? configuredOrigins
+  : ['http://localhost:5173']
+
 app.use(helmet())
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:5173'
+  origin: (origin, callback) => {
+    // Allow command-line and server-to-server health checks, while limiting
+    // browser requests to explicitly configured frontend origins.
+    callback(null, !origin || allowedOrigins.includes(origin))
+  }
 }))
 
 // Attach request logging before routes so controller errors include req.log.
