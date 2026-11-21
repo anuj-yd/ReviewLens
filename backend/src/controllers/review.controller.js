@@ -115,14 +115,22 @@ export const uploadReviews = async (req, res, next) => {
 
 export const getImportDashboard = async (req, res) => {
   const { importId } = req.params
+  const { product } = req.query
   if (!mongoose.isValidObjectId(importId)) {
     return res.status(400).json({ success: false, message: 'Invalid import ID.' })
   }
 
-  const reviews = await Review.find({ importId }).sort({ createdAt: 1 }).lean()
-  if (!reviews.length && !(await ImportBatch.exists({ _id: importId }))) {
+  const batch = await ImportBatch.findById(importId).lean()
+  if (!batch) {
     return res.status(404).json({ success: false, message: 'Import batch not found.' })
   }
+
+  const filter = { importId }
+  if (product && typeof product === 'string' && product.trim() && product.trim().toLowerCase() !== 'all') {
+    filter.product = product.trim()
+  }
+
+  const reviews = await Review.find(filter).sort({ createdAt: 1 }).lean()
 
   const analyzed = reviews.filter(review => review.analysisStatus === 'completed' && review.aiAnalysis?.sentiment)
   const sentimentCounts = { positive: 0, neutral: 0, negative: 0 }
@@ -142,6 +150,18 @@ export const getImportDashboard = async (req, res) => {
   const percentages = Object.fromEntries(Object.entries(sentimentCounts).map(([key, count]) => [key, total ? Math.round(count / total * 100) : 0]))
   return res.json({
     success: true,
+    importId: batch._id,
+    importSummary: {
+      fileName: batch.fileName,
+      totalRows: batch.totalRows,
+      acceptedReviewRows: batch.acceptedReviewRows,
+      uniqueReviewCount: batch.uniqueReviewCount,
+      skippedEmptyReviews: batch.skippedEmptyReviews,
+      skippedInvalidRows: batch.skippedInvalidRows,
+      duplicateCount: batch.duplicateCount,
+      missingRatingCount: batch.missingRatingCount,
+      invalidRatingCount: batch.invalidRatingCount
+    },
     summary: {
       totalReviews: total,
       needsReply: analyzed.filter(review => review.aiAnalysis.needsReply).length,

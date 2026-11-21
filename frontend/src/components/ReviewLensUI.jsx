@@ -1,7 +1,12 @@
-export function BrandMark() {
-  return <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#ff8a4c]/30 bg-[#ff8a4c]/10 text-[#ff9a62]">
-    <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" aria-hidden="true"><path d="M4.5 17.5V7.2c0-.9.7-1.7 1.6-1.7h11.8c.9 0 1.6.8 1.6 1.7v10.3c0 .9-.7 1.7-1.6 1.7H6.1c-.9 0-1.6-.8-1.6-1.7Z" stroke="currentColor" strokeWidth="1.5"/><path d="m8 14 2.5-2.5 2 2 3.5-4M8 16.5h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-  </div>
+export function BrandMark({ className = 'h-9 w-9' }) {
+  return (
+    <div className={`relative flex items-center justify-center rounded-xl border border-[#ff8a4c]/30 bg-[#ff8a4c]/10 text-[#ff8a4c] shadow-xs ${className}`}>
+      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" aria-hidden="true">
+        <path d="M4.5 17.5V7.2c0-.9.7-1.7 1.6-1.7h11.8c.9 0 1.6.8 1.6 1.7v10.3c0 .9-.7 1.7-1.6 1.7H6.1c-.9 0-1.6-.8-1.6-1.7Z" stroke="currentColor" strokeWidth="1.6"/>
+        <path d="m8 14 2.5-2.5 2 2 3.5-4M8 16.5h8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    </div>
+  )
 }
 
 export function Icon({ name, className = 'h-4 w-4' }) {
@@ -19,49 +24,159 @@ export function Icon({ name, className = 'h-4 w-4' }) {
     chart: <><path d="M4 19V5m0 14h16"/><path d="m6 15 4-4 3 2 5-6"/></>,
     warning: <><path d="M10.3 3.8 2.6 17a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 3.8a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4m0 3h.01"/></>,
     help: <><circle cx="12" cy="12" r="9"/><path d="M9.6 9a2.5 2.5 0 0 1 4.8.8c0 1.7-2.4 2-2.4 3.8M12 17h.01"/></>,
-    close: <path d="m6 6 12 12M18 6 6 18" />
+    close: <path d="m6 6 12 12M18 6 6 18" />,
+    chevronDown: <path d="m6 9 6 6 6-6" />,
+    filter: <path d="M3 5h18M6 12h12M10 19h4" />
   }
-  return <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true"><g stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">{paths[name] || paths.chart}</g></svg>
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+      <g stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+        {paths[name] || paths.chart}
+      </g>
+    </svg>
+  )
 }
 
-export function Spinner() {
-  return <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-r-transparent" aria-hidden="true" />
+export function Spinner({ className = 'h-3.5 w-3.5' }) {
+  return (
+    <span className={`inline-block animate-spin rounded-full border-2 border-current border-r-transparent ${className}`} aria-hidden="true" />
+  )
+}
+
+export function BentoCard({ children, className = '', header, title, badge, action }) {
+  return (
+    <div className={`bento-card relative flex flex-col justify-between overflow-hidden p-5 sm:p-6 ${className}`}>
+      {(header || title || badge || action) && (
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div>
+            {header && <p className="font-mono text-[10.5px] font-semibold uppercase tracking-[0.12em] text-[#71717a]">{header}</p>}
+            {title && <h3 className="mt-0.5 text-base font-semibold tracking-tight text-[#f5f5f4]">{title}</h3>}
+          </div>
+          <div className="flex items-center gap-2">
+            {badge}
+            {action}
+          </div>
+        </div>
+      )}
+      {children}
+    </div>
+  )
+}
+
+export function BentoSectionHeader({ eyebrow, title, detail, action }) {
+  return (
+    <div className="mb-3.5 flex flex-wrap items-end justify-between gap-3">
+      <div>
+        <div className="flex items-center gap-2">
+          <span className="h-1.5 w-1.5 rounded-full bg-[#ff8a4c]" />
+          <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-[#ff8a4c]">{eyebrow}</p>
+        </div>
+        <div className="mt-0.5 flex flex-wrap items-baseline gap-2">
+          <h2 className="text-xl font-semibold tracking-tight text-[#f5f5f4]">{title}</h2>
+          {detail && <span className="font-mono text-xs text-[#71717a]">· {detail}</span>}
+        </div>
+      </div>
+      {action && <div>{action}</div>}
+    </div>
+  )
 }
 
 export function SectionHeading({ eyebrow, title, detail }) {
-  return <div className="mb-4"><p className="font-mono text-[11px] font-medium uppercase tracking-[0.14em] text-[#77777f]">{eyebrow}</p><div className="mt-1.5 flex flex-wrap items-baseline gap-x-3 gap-y-1"><h2 className="text-2xl font-semibold tracking-tight text-[#f2f1ec]">{title}</h2>{detail && <p className="font-mono text-xs text-[#77777f]">{detail}</p>}</div></div>
+  return (
+    <div className="mb-3">
+      <div className="flex items-center gap-2">
+        <span className="h-1.5 w-1.5 rounded-full bg-[#ff8a4c]" />
+        <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-[#ff8a4c]">{eyebrow}</p>
+      </div>
+      <div className="mt-0.5 flex flex-wrap items-baseline gap-2">
+        <h2 className="text-xl font-semibold tracking-tight text-[#f5f5f4]">{title}</h2>
+        {detail && <p className="font-mono text-xs text-[#71717a]">· {detail}</p>}
+      </div>
+    </div>
+  )
 }
 
-export function StatCard({ title, value, detail, icon, accent, tooltip }) {
+export function StatCard({ title, value, detail, icon, accent = 'blue', tooltip }) {
   const accents = {
-    blue: 'border-white/[0.09] bg-white/[0.035] text-[#b8b8c0]',
-    emerald: 'border-emerald-300/15 bg-emerald-300/[0.05] text-emerald-200',
-    amber: 'border-amber-300/15 bg-amber-300/[0.05] text-amber-200',
-    rose: 'border-rose-300/15 bg-rose-300/[0.05] text-rose-200'
+    blue: {
+      box: 'border-white/[0.08] bg-white/[0.03] text-[#a1a1aa]',
+      glow: 'hover:border-blue-500/30'
+    },
+    emerald: {
+      box: 'border-emerald-400/20 bg-emerald-400/[0.06] text-emerald-300',
+      glow: 'hover:border-emerald-400/30'
+    },
+    amber: {
+      box: 'border-amber-400/20 bg-amber-400/[0.06] text-amber-200',
+      glow: 'hover:border-amber-400/30'
+    },
+    rose: {
+      box: 'border-rose-400/20 bg-rose-400/[0.06] text-rose-300',
+      glow: 'hover:border-rose-400/30'
+    }
   }
-  return <div title={tooltip || title} className="rounded-2xl border border-white/[0.08] bg-[#0e0e10] p-5 transition duration-200 hover:-translate-y-0.5 hover:border-white/[0.15] sm:p-6">
-    <div className="flex items-start justify-between gap-3"><p className="font-mono text-[11px] font-medium uppercase tracking-[0.1em] text-[#92929a]">{title}</p><span className={`flex h-9 w-9 items-center justify-center rounded-lg border ${accents[accent]}`}><Icon name={icon} className="h-4 w-4" /></span></div>
-    <p className="mt-4 font-serif text-5xl italic leading-none tracking-tight tabular-nums text-[#f2f1ec]">{value}</p>
-    <p className="mt-3 text-sm text-[#77777f]">{detail}</p>
-  </div>
+
+  const selectedAccent = accents[accent] || accents.blue
+
+  return (
+    <div
+      title={tooltip || title}
+      className={`bento-subcard relative flex flex-col justify-between p-4 transition-all duration-150 ${selectedAccent.glow}`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <p className="font-mono text-[10.5px] font-semibold uppercase tracking-[0.1em] text-[#a1a1aa]">{title}</p>
+        <span className={`flex h-7 w-7 items-center justify-center rounded-lg border ${selectedAccent.box}`}>
+          <Icon name={icon} className="h-3.5 w-3.5" />
+        </span>
+      </div>
+      <div className="mt-3">
+        <p className="font-serif text-3xl italic leading-none tracking-tight tabular-nums text-[#f5f5f4]">{value}</p>
+        {detail && <p className="mt-1.5 font-mono text-[11px] text-[#71717a]">{detail}</p>}
+      </div>
+    </div>
+  )
 }
 
 export function SentimentBadge({ sentiment }) {
   const styles = sentiment === 'positive'
-    ? 'border-emerald-300/15 bg-emerald-300/[0.07] text-emerald-200'
+    ? { border: 'border-emerald-400/20 bg-emerald-400/[0.08] text-emerald-300', dot: 'bg-emerald-400' }
     : sentiment === 'negative'
-      ? 'border-rose-300/15 bg-rose-300/[0.07] text-rose-200'
-      : 'border-amber-300/15 bg-amber-300/[0.07] text-amber-100'
-  return <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold capitalize ${styles}`}>{sentiment}</span>
+      ? { border: 'border-rose-400/20 bg-rose-400/[0.08] text-rose-300', dot: 'bg-rose-400' }
+      : { border: 'border-amber-400/20 bg-amber-400/[0.08] text-amber-200', dot: 'bg-amber-300' }
+
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 font-mono text-[10.5px] font-medium capitalize ${styles.border}`}>
+      <span className={`h-1.5 w-1.5 rounded-full ${styles.dot}`} />
+      {sentiment}
+    </span>
+  )
 }
 
 export function Rating({ rating }) {
-  if (rating == null) return <span className="rounded-md bg-white/[0.04] px-1.5 py-0.5 text-[10px] text-slate-500">Unrated</span>
-  return <span className="inline-flex items-center gap-1 text-[11px] text-amber-200"><span aria-label={`${rating} out of 5 stars`}>{'★'.repeat(rating)}<span className="text-slate-700">{'★'.repeat(5 - rating)}</span></span><span className="text-slate-500">{rating}/5</span></span>
+  if (rating == null) {
+    return (
+      <span className="rounded-md border border-white/[0.06] bg-white/[0.03] px-2 py-0.5 font-mono text-[10px] text-[#71717a]">
+        Unrated
+      </span>
+    )
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs">
+      <span className="text-amber-400" aria-label={`${rating} out of 5 stars`}>
+        {'★'.repeat(rating)}<span className="text-zinc-700">{'★'.repeat(5 - rating)}</span>
+      </span>
+      <span className="font-mono text-[11px] text-[#a1a1aa]">{rating}/5</span>
+    </span>
+  )
 }
 
 export function AnalysisStatus({ status }) {
   const failed = status === 'analysis_failed'
-  return <span className={`inline-flex items-center gap-1.5 text-[11px] ${failed ? 'text-rose-300' : 'text-slate-500'}`}><i className={`h-1.5 w-1.5 rounded-full ${failed ? 'bg-rose-400' : 'bg-slate-600'}`} />{failed ? 'Analysis failed' : 'Not analyzed'}</span>
+  return (
+    <span className={`inline-flex items-center gap-1.5 font-mono text-[11px] ${failed ? 'text-rose-300' : 'text-[#71717a]'}`}>
+      <i className={`h-1.5 w-1.5 rounded-full ${failed ? 'bg-rose-400' : 'bg-zinc-600'}`} />
+      {failed ? 'Analysis failed' : 'Not analyzed'}
+    </span>
+  )
 }
-

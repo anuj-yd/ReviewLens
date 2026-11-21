@@ -362,7 +362,7 @@ Statuses below describe the source code reviewed in this repository. **Implement
 | Bonus | Status | Notes |
 |---|---|---|
 | Rating mismatch and agreement percentage | Implemented | The dashboard shows agreement and flags mismatches; unrated and unanalyzed reviews are excluded. |
-| Product-specific view | Partial | A product selector shows per-product sentiment trends and issue themes inside the dashboard. It is not a separate route/page for each product. |
+| Product-specific view | Implemented | A product selector in the dashboard seamlessly toggles between overall and per-product views, showing dated sentiment trends, trajectory indicators, topic-level issue themes, and synchronized review filtering without separate routes. |
 | Live deployment | Not completed | Deployment instructions are provided below, but there is no verified public application URL yet. |
 | Docker Compose | Not included | Compose was removed from this project; deployments use MongoDB Atlas and separate frontend/backend hosting. |
 | Cost and speed log | Implemented | After bulk analysis, the dashboard shows AI requests, cache reuse, retries, failed reviews, and processing time. It reports request counts, not monetary cost. |
@@ -391,20 +391,24 @@ Codex assisted with code inspection, implementation, documentation, and test cre
 
 ## Screenshots
 
-The screenshots below show the dashboard after importing and analyzing review data.
+The screenshots below show the modern dark Bento Grid dashboard after importing, classifying, and exploring customer review intelligence.
 
-### Upload and dashboard overview
+### 1. Executive Intelligence, Ingestion Pipeline & Catalog Scope
 
-![ReviewLens upload flow, data-cleaning report, and sentiment summary](docs/screenshots/upload-and-dashboard-overview.png)
+![ReviewLens Executive Overview, data cleaning telemetry, sentiment distribution, and catalog scope selector](docs/screenshots/01-executive-overview-and-pipeline.png)
 
-### Sentiment mix, complaints, and praises
+### 2. Sentiment Velocity, Friction Themes & Customer Praises
 
-![Sentiment distribution with the top complaint and praise themes](docs/screenshots/sentiment-and-themes.png)
+![Sentiment trajectory over time, AI-extracted friction drivers, top complaints, and top praises](docs/screenshots/02-sentiment-trends-complaints-praises.png)
 
-### Product insights and review explorer
+### 3. Cross-Product Benchmark & Explorer Filters
 
-![Product-level sentiment trend, themes, and review filters](docs/screenshots/product-insights-and-review-explorer.png)
+![Cross-product comparison matrix benchmark and feedback explorer filter controls](docs/screenshots/03-cross-product-benchmark-and-explorer.png)
 
-### Review analysis and suggested replies
+### 4. Customer Feedback Explorer & AI Suggested Replies
 
-![Review analysis with generated suggested replies for reviews that need a response](docs/screenshots/review-analysis-and-suggested-replies.png)
+![Feedback explorer table with rating-sentiment mismatch warnings, AI topic badges, and suggested response drafts](docs/screenshots/04-feedback-explorer-and-ai-replies.png)
+
+### 5. Product-Scoped Intelligence & Trend Isolation
+
+![Product-specific scoped intelligence showing isolated sentiment velocity, friction themes, and review volume](docs/screenshots/05-product-scoped-intelligence.png)
