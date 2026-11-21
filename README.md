@@ -324,7 +324,8 @@ This checklist describes implemented code, not proof that a complete deployment 
 
 - [ ] Run a full live flow with a representative CSV and confirm upload → analysis → dashboard.
 - [x] Add screenshots captured from the running app.
-- [ ] Confirm the repository is public and submit the repository link and ZIP if required.
+- [x] Confirm the repository is public.
+- [ ] Submit the repository link and ZIP if required by the evaluator.
 - [ ] Review commit history for distinct, meaningful changes.
 
 ## Limitations and next steps
